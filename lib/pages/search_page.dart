@@ -10,7 +10,6 @@ import '../models/search_discovery.dart';
 import '../models/shuqi_book.dart';
 import '../services/api_client.dart';
 import '../services/backend_transport.dart';
-import '../services/desktop_platform.dart';
 import '../services/search_history_store.dart';
 import '../services/user_facing_error.dart';
 import '../widgets/home/home_design.dart';
@@ -727,7 +726,7 @@ class _SearchPageState extends State<SearchPage> {
               // 与首页同一个阅读宽度：非 Windows 压到 840dp 并居中。
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxWidth: isWindowsDesktop ? double.infinity : 840,
+                  maxWidth: 840,
                 ),
                 child: _content(context, feed),
               ),

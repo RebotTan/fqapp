@@ -113,7 +113,7 @@ void main() {
     expect(find.text('推荐书'), findsWidgets);
 
     // 切到听书：337 没有渲染器，必须落到卡片网格。
-    await tester.tap(find.byKey(const ValueKey('home_category_5')));
+    await tester.tap(find.byKey(const ValueKey('home_category_2')));
     await tester.pumpAndSettle();
     expect(find.text('听书卡'), findsWidgets);
     expect(find.text('推荐书'), findsNothing);

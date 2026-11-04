@@ -66,17 +66,6 @@ class SignatureClassificationTest(unittest.TestCase):
         self.assertEqual(report["status"], "passed")
         self.assertFalse(report["signature"]["signed"])
 
-    def test_armeabi_v7a_apk_verifies_with_its_own_abi(self):
-        report = self.run_verifier(abi="armeabi-v7a")
-        self.assertEqual(report["status"], "passed")
-        self.assertEqual(report["abi"], "armeabi-v7a")
-
-    def test_arm64_apk_rejected_under_armeabi_v7a(self):
-        # An ARM64 APK verified as 32-bit must fail: its native libraries
-        # live under lib/arm64-v8a, not lib/armeabi-v7a.
-        with self.assertRaises(verifier.VerificationError):
-            self.run_verifier(abi="armeabi-v7a", fixture_abi="arm64-v8a")
-
     def test_missing_manifest_does_not_hide_broken_v1_signature(self):
         with self.assertRaises(verifier.VerificationError):
             self.run_verifier(material="v1")

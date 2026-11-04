@@ -3,7 +3,6 @@ import 'package:flutter_lucide/flutter_lucide.dart';
 
 import '../models/category_front.dart';
 import '../services/api_client.dart';
-import '../services/desktop_platform.dart';
 import '../services/user_facing_error.dart';
 import '../widgets/category/category_dim_rail.dart';
 import '../widgets/home/home_design.dart';
@@ -298,10 +297,6 @@ class _TopBar extends StatelessWidget {
       child: Row(
         children: [
           // 桌面壳层顶栏已经有「← 什锦铺」，这里再放一个返回键就是两个
-          // 箭头上下叠着。手机上保留官方形态。
-          if (isWindowsDesktop)
-            const SizedBox(width: 16)
-          else
             IconButton(
               key: const Key('category_back'),
               icon: Icon(

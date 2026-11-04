@@ -20,12 +20,9 @@ import '../models/chapter_summary.dart';
 import '../models/comment_reply.dart';
 import '../models/media_item.dart';
 import '../models/media_id.dart';
-import '../models/playlet_comment.dart';
 import '../models/rank.dart';
-import '../models/related_series.dart';
 import '../models/category_front.dart';
 import '../models/search_discovery.dart';
-import '../models/series_detail.dart';
 import 'app_log.dart';
 import 'api_response_decoder.dart';
 import 'backend_service.dart';
@@ -47,7 +44,6 @@ class ApiClient {
     BackendTransport? transport,
     String? baseUrl,
     this._timeout = const Duration(seconds: 20),
-    this._comicTimeout = const Duration(seconds: 90),
   }) : _transport =
            transport ??
            (client != null || baseUrl != null
@@ -173,9 +169,6 @@ class ApiClient {
   /// upstream request must not leave a page spinning forever.
   final Duration _timeout;
 
-  // Encrypted comic chapters are downloaded and decrypted by the backend
-  // before its JSON response is ready, so they need a separate finite limit.
-  final Duration _comicTimeout;
 
   /// Base URL used to resolve backend-relative resources (`/src/...`). It is
   /// read from the transport so a backend restart cannot leave a stale port.
@@ -1030,34 +1023,6 @@ class ApiClient {
     );
   }
 
-  /// 短剧剧评（官方 `gx1/m.java:168-181`）：`:group_id` 是剧集 id。
-  ///
-  /// [sort] 1=最热（「全部」）、3=最新；[tag] 是服务端筛选标签，
-  /// 非空时官方同时改用最新排序。
-  Future<PlayletCommentPage> playletComments(
-    String seriesId, {
-    int sort = UgcSort.smartHot,
-    int count = 10,
-    String cursor = '',
-    String tag = '',
-    String insertCommentIds = '',
-  }) async {
-    final response = await _get(
-      _url('/api/v1/series/${Uri.encodeComponent(seriesId)}/comments', {
-        'sort': '$sort',
-        'count': '$count',
-        if (cursor.isNotEmpty) 'cursor': cursor,
-        if (tag.isNotEmpty) 'tag': tag,
-        // 官方从热评进入时把它插进列表（`gx1/m.java:236-241`）。
-        if (insertCommentIds.isNotEmpty) 'insert_comment_ids': insertCommentIds,
-      }),
-    );
-    final status = response.statusCode;
-    final bytes = response.bodyBytes;
-    return Isolate.run(
-      () => PlayletCommentPage.fromPayload(_decodeEnvelope(status, bytes)),
-    );
-  }
 
   /// 短剧回复读取使用 Book/NovelBookReply 参数，不能走小说段评回复接口。
   ///
@@ -1089,57 +1054,7 @@ class ApiClient {
     );
   }
 
-  /// 短剧弹幕取数（官方 `DanmakuRequestHelper.java:314-329`）。
-  ///
-  /// [vid] 是当前视频 id（官方把它当 path 的 group_id），[seriesId] 进
-  /// `business_param.book_id`；时间单位是毫秒。
-  Future<PlayletCommentPage> playletDanmaku(
-    String vid, {
-    required String seriesId,
-    int startOffsetMs = 0,
-    Duration duration = Duration.zero,
-    String cursor = '',
-  }) async {
-    final response = await _get(
-      _url('/api/v1/videos/${Uri.encodeComponent(vid)}/danmaku', {
-        'series_id': seriesId,
-        'start_offset_time': '$startOffsetMs',
-        'playlet_item_duration': '${duration.inSeconds}',
-        if (cursor.isNotEmpty) 'cursor': cursor,
-      }),
-    );
-    final status = response.statusCode;
-    final bytes = response.bodyBytes;
-    return Isolate.run(
-      () =>
-          PlayletCommentPage.fromDanmakuPayload(_decodeEnvelope(status, bytes)),
-    );
-  }
 
-  /// 官方热评 + 右栏评论计数（`a13/w.java:563-599`）。
-  ///
-  /// 热评与剧评共用一条列表接口，这里固定 `comment_source=4`、
-  /// `comment_type=4`、`group_type=30`、`count=20`；返回
-  /// `common_list_info.total` 就是右栏评论计数，列表则由 [hotOf] 在本地筛。
-  ///
-  /// [vid] 为空时退化成剧集 id（官方 `jVar.C()` 的书场景分支）。
-  Future<PlayletCommentPage> playletHotComments(
-    String seriesId, {
-    String vid = '',
-    int serverChannel = 17,
-  }) async {
-    final response = await _get(
-      _url('/api/v1/series/${Uri.encodeComponent(seriesId)}/hot-comments', {
-        if (vid.isNotEmpty) 'vid': vid,
-        'server_channel': '$serverChannel',
-      }),
-    );
-    final status = response.statusCode;
-    final bytes = response.bodyBytes;
-    return Isolate.run(
-      () => PlayletCommentPage.fromPayload(_decodeEnvelope(status, bytes)),
-    );
-  }
 
   /// 发短剧评论（官方 `comment/add`，`community/.../playlet/editor/p0.java:211-256`）。
   ///
@@ -1280,69 +1195,8 @@ class ApiClient {
     return '';
   }
 
-  /// Short-drama series detail, including the cast list.
-  ///
-  /// The reading-API detail and directory responses carry no cast data, so the
-  /// actor row needs this call. A failure yields [SeriesDetail.empty] — the row
-  /// is decoration and must not break a playable series. Detail pages use
-  /// [strict] to expose failures for local retry instead of rendering emptiness.
-  Future<SeriesDetail> seriesDetail(
-    String seriesId, {
-    bool strict = false,
-  }) async {
-    try {
-      final response = await _get(
-        _url('/api/v1/series/${Uri.encodeComponent(seriesId)}', {}),
-      );
-      final status = response.statusCode;
-      final bytes = response.bodyBytes;
-      final detail = await Isolate.run(
-        () => SeriesDetail.fromPayload(_decodeEnvelope(status, bytes)),
-      );
-      if (strict && detail.isEmpty) {
-        throw const ApiException('剧集详情暂时无法加载');
-      }
-      return detail;
-    } on Exception {
-      if (strict) rethrow;
-      return SeriesDetail.empty;
-    }
-  }
 
-  Future<List<RelatedSeries>> relatedSeries(String seriesId) async {
-    final response = await _get(
-      _url('/api/v1/series/${Uri.encodeComponent(seriesId)}/related', {}),
-    );
-    final status = response.statusCode;
-    final bytes = response.bodyBytes;
-    return Isolate.run(
-      () => RelatedSeries.fromPayload(
-        _decodeEnvelope(status, bytes),
-        currentSeriesId: seriesId,
-      ),
-    );
-  }
 
-  /// Returns comic pages in backend order with absolute HTTP(S) URLs.
-  Future<List<ComicImage>> comicImages(String itemId) async {
-    final response = await _get(
-      _contentUrl(itemId, tab: '漫画'),
-      timeout: _comicTimeout,
-    );
-    final statusCode = response.statusCode;
-    final bodyBytes = response.bodyBytes;
-    final baseUrl = _resourceBase;
-    return Isolate.run(() {
-      try {
-        return parseComicImages(
-          _decodeEnvelope(statusCode, bodyBytes),
-          baseUrl: baseUrl,
-        );
-      } on FormatException catch (error) {
-        throw ApiException(error.message);
-      }
-    });
-  }
 
   /// Text-reader variant that combines JSON decode, nested content lookup and
   /// HTML cleanup in one background-isolate pass.

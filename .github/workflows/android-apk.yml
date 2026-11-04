@@ -39,7 +39,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # gh release create (guarded to v* + signed builds) needs write on contents;
+  # everything else only needs read.
+  contents: write
 
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -57,7 +59,7 @@ env:
   # this, so a package signed with the wrong key -- or not signed at all --
   # fails here instead of being published. The matching keystore is stored
   # as a repository secret.
-  RELEASE_SIGNER_SHA256: 'e8471cd8a935fd71fd8197355b5558d245449d5bc8294f60f88616f60451c550'
+  RELEASE_SIGNER_SHA256: 'cccd61ad4c142e7c377b8a744534676744d21c2cc42b3b0555c6ce44f867b250'
   FQAPP_USE_MAVEN_MIRRORS: 'false'
   # workers.max / CMAKE_BUILD_PARALLEL_LEVEL stay at 2. Raising them to 4 was
   # measured and made things WORSE on the 4-vCPU / 16 GB runner: the release APK
@@ -147,7 +149,7 @@ jobs:
           # not the floating `stable` channel: a new stable must not silently
           # change the toolchain a release was built with. Bump deliberately.
           toolchain: '1.99.1'
-          targets: aarch64-linux-android, armv7-linux-androideabi
+          targets: aarch64-linux-android
           components: rustfmt, clippy
 
       - name: Cache the Cargo build
@@ -335,15 +337,15 @@ jobs:
             printf 'bindings_sha256=%s\n' "$after"
           } > build/ci-artifacts/bindings-digest.txt
 
-      - name: Compile the Rust core for Android (ARM64 + ARMv7)
+      - name: Compile the Rust core for Android (ARM64)
         run: bash scripts/build_rust_backend.sh --skip-codegen
 
       - name: Check the Android Rust core libraries
         run: |
           mkdir -p build/ci-artifacts
-          # Both ABIs are built by the script above; each library gets the
-          # same gates (bridge symbols exported, 16 KiB ELF layout).
-          for abi in arm64-v8a armeabi-v7a; do
+          # The project ships 64-bit only; the library gets these gates:
+          # bridge symbols exported, 16 KiB ELF layout.
+          for abi in arm64-v8a; do
             so=android/app/src/main/jniLibs/$abi/libfqapi_core.so
             test -s "$so"
             nm_bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
@@ -429,12 +431,12 @@ jobs:
       # The trade-off is one extra Flutter SDK install on the gate's runner;
       # the pub get below still has to run because the release build needs the
       # resolved package config and the regenerated plugin registrant.
-      - name: Compile release APKs (ARM64 + ARMv7)
-        # --split-per-abi produces one APK per ABI (app-arm64-v8a-release.apk,
-        # app-armeabi-v7a-release.apk) instead of a fat APK, so a 32-bit
-        # device does not download the ARM64 native libraries and vice versa.
+      - name: Compile the release APK (ARM64)
+        # --split-per-abi keeps the artifact named app-arm64-v8a-release.apk
+        # instead of a fat APK. Only 64-bit ARM is built: 32-bit devices are
+        # no longer supported, so android-arm/armeabi-v7a is not a target.
         # Keep pub enabled to regenerate the release plugin registrant after tests.
-        run: flutter build apk --release --target-platform android-arm,android-arm64 --split-per-abi
+        run: flutter build apk --release --target-platform android-arm64 --split-per-abi
 
       - name: Test Android runtime boundaries
         working-directory: app/android
@@ -482,9 +484,8 @@ jobs:
           # actually applied. Without the secrets the package is unsigned, so
           # pinning a certificate there could never pass; every other check
           # (16 KiB alignment, packaged native libraries) still runs.
-          # Each split APK is verified with its own ABI, into its own report
-          # directory, so the two reports never overwrite each other.
-          for abi in arm64-v8a armeabi-v7a; do
+          # The APK is verified with the ABI it was built for.
+          for abi in arm64-v8a; do
             python3 scripts/verify_android_apk.py \
               --apk "build/app/outputs/flutter-apk/app-$abi-release.apk" \
               --abi "$abi" \
@@ -497,7 +498,7 @@ jobs:
           {
             printf 'App commit: %s\n' "$GITHUB_SHA"
             printf 'Rust core: fqapi_core (flutter_rust_bridge %s)\n' "$FRB_VERSION"
-            for abi in arm64-v8a armeabi-v7a; do
+            for abi in arm64-v8a; do
               printf 'Rust core library SHA-256 (%s): ' "$abi"
               sha256sum "android/app/src/main/jniLibs/$abi/libfqapi_core.so"
             done
@@ -520,7 +521,7 @@ jobs:
           import pathlib
           import zipfile
           rows = []
-          for abi in ('arm64-v8a', 'armeabi-v7a'):
+          for abi in ('arm64-v8a',):
               apk = pathlib.Path(f'build/app/outputs/flutter-apk/app-{abi}-release.apk')
               with zipfile.ZipFile(apk) as archive:
                   native = [name for name in archive.namelist() if name.startswith('lib/') and name.endswith('.so')]
@@ -553,27 +554,6 @@ jobs:
             app/build/ci-artifacts/verification/arm64-v8a/*.sha256
             app/build/ci-artifacts/verification/arm64-v8a/*.log
 
-      - name: Upload ARMv7 (32-bit) APK and verification reports
-        id: artifact-armv7
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          # Same retention as the ARM64 artifact. Older 32-bit devices
-          # (including many e-readers) install this one; the ARM64 APK
-          # refuses to install on them.
-          name: fqapp-armv7-${{ steps.artifact-ids.outputs.safe_ref }}-${{ steps.artifact-ids.outputs.short_sha }}-${{ github.run_number }}
-          retention-days: 14
-          if-no-files-found: error
-          compression-level: 0
-          path: |
-            app/build/ci-artifacts/app-armeabi-v7a-release.apk
-            app/build/ci-artifacts/android-media-boundary.json
-            app/build/ci-artifacts/build-info.txt
-            app/build/ci-artifacts/rust-core-symbols-armeabi-v7a.txt
-            app/build/ci-artifacts/rust-core-program-headers-armeabi-v7a.txt
-            app/build/ci-artifacts/verification/armeabi-v7a/*.json
-            app/build/ci-artifacts/verification/armeabi-v7a/*.sha256
-            app/build/ci-artifacts/verification/armeabi-v7a/*.log
-
       - name: Retain diagnostics if a build or APK check fails
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -592,18 +572,14 @@ jobs:
       - name: Write download summary
         env:
           ARTIFACT_URL_ARM64: ${{ steps.artifact-arm64.outputs.artifact-url }}
-          ARTIFACT_URL_ARMV7: ${{ steps.artifact-armv7.outputs.artifact-url }}
           HAS_RELEASE_SIGNING: ${{ steps.signing.outputs.has_release_signing }}
         run: |
           {
             printf '[下载 ARM64 APK 和校验报告](%s)\n\n' "$ARTIFACT_URL_ARM64"
-            printf '[下载 ARMv7（32 位）APK 和校验报告](%s)\n\n' "$ARTIFACT_URL_ARMV7"
             printf 'App commit: `%s`  \n' "$GITHUB_SHA"
             printf 'Rust core: `fqapi_core` (flutter_rust_bridge `%s`)\n\n' "$FRB_VERSION"
             printf 'Rust core library SHA-256 (arm64-v8a): `%s`\n\n' \
               "$(sha256sum android/app/src/main/jniLibs/arm64-v8a/libfqapi_core.so | cut -d ' ' -f 1)"
-            printf 'Rust core library SHA-256 (armeabi-v7a): `%s`\n\n' \
-              "$(sha256sum android/app/src/main/jniLibs/armeabi-v7a/libfqapi_core.so | cut -d ' ' -f 1)"
             # Only a build that actually restored the release signing identity
             # may claim the formal release signature. Anything else (missing
             # secrets, fork PR) is unsigned: say so plainly, print no
@@ -618,6 +594,23 @@ jobs:
               printf '已验证 Rust 核心库与 APK ZIP 的 16 KiB 对齐；设备播放仍需实测。\n'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Release 发布：只有正式 tag 推送（v*）且带正式签名时才发布 GitHub
+      # Release。PR / 分支构建继续走 Artifacts（14 天），不占用 Releases 列表。
+      # contents: write 只在这一步生效（GITHUB_TOKEN 的最小权限）。
+      - name: Publish the tagged build to GitHub Releases
+        if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.has_release_signing == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ARM64: build/ci-artifacts/app-arm64-v8a-release.apk
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release create "$tag" \
+            --title "fqapp $tag" \
+            --generate-notes \
+            "$ARTIFACT_ARM64#fqapp-$tag-arm64-v8a.apk" \
+            build/ci-artifacts/build-info.txt#build-info.txt \
+            build/ci-artifacts/verification/arm64-v8a/report.json#verification-arm64.json
 
       - name: Remove temporary signing file
         if: always()
@@ -666,9 +659,8 @@ jobs:
       # AGENTS.md caps files at 500 lines and functions at 80. The codebase is
       # already over that in many places, so this gate freezes today's debt
       # instead of pretending it is clean: a listed file may shrink but not grow.
-      # It lives here rather than in windows.yml: it only reads source, and the
-      # Windows job additionally downloads ffmpeg over the network, so a format
-      # gate should not be blocked behind that.
+      # It runs on the same job as the rest of the gate: it only reads source,
+      # so it fails fast before the long compile and test steps.
       - name: Check size budget
         run: bash scripts/check_line_budget.sh
 

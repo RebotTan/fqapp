@@ -16,8 +16,6 @@ python scripts/generate_app_icons.py
   15% 圆角裁切，另有圆形版本。Android 7.x 没有自适应图标，桌面直接使用这两组图。
 - Android 8.0 及以上的自适应图标：底板色与前景一致，原图铺满 108dp 前景的 72dp
   视觉区；圆形、圆角方形遮罩会切掉 72dp 方形的四角，关键图形需留在 66dp 安全区内。
-- `windows/runner/resources/app_icon.ico`：16–256 七档，供 Windows 运行器与安装包
-  使用。
 - `assets/images/app_logo.webp`：384×384，供应用内“关于”页使用。该页以 88dp 绘制，
   384px 覆盖到 4 倍 DPI；用 WebP 而非 PNG 是为了让入包体积小一个数量级。
 
@@ -26,5 +24,4 @@ python scripts/generate_app_icons.py
 处理；四角找不到白页边、页边占比异常或页边没灌满时脚本直接报错，不会产出错色图标。
 
 图标配置见 `android/app/src/main/AndroidManifest.xml`，Flutter 资源声明见
-`pubspec.yaml`。桌面图标需要重新构建并安装 APK 后更新，热重载不会更新桌面图标；
-Windows 图标由同一脚本生成，构建安装包前无需手工替换。
+`pubspec.yaml`。桌面图标需要重新构建并安装 APK 后更新，热重载不会更新桌面图标。

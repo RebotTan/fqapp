@@ -117,14 +117,8 @@ fqapp/
 | JDK | 17 | Android Gradle 构建 |
 | Android NDK | 28.2.13676358 | 交叉编译 Rust ARM64 核心与 C 流式解密库 |
 | CMake | 3.22.1 | Android 构建自动编译 C 库 |
-| Visual Studio | 2022（「使用 C++ 的桌面开发」工作负载） | 仅构建 Windows 桌面端（可选） |
 
 > Windows 下构建注意：Kotlin 增量编译在部分环境会报 `Could not close incremental caches`，已在 `android/gradle.properties` 中关闭（`kotlin.incremental=false`）。
-
-> **桌面插件与「开发人员模式」**：仓库已包含 Windows 桌面端插件，`flutter pub get` / `flutter test` /
-> `flutter run` 需要系统开启「开发人员模式」（插件通过符号链接注册），否则报
-> `Building with plugins requires symlink support`。只跑 `dart pub get` 或 `flutter analyze` 不受影响；
-> 不打算本地跑测试时，用 GitHub Actions 的 CI 即可。桌面端构建与验证见 [WINDOWS.md](WINDOWS.md)。
 
 ### 1. 编译 Rust 原生核心
 
@@ -287,7 +281,7 @@ maven { url = uri("https://maven.aliyun.com/repository/public") }
 |---|---|---|---|
 | 模块 | `./scripts/test_quick.sh home` | 秒级 | 改动迭代的每一轮 |
 | 全量 | `./scripts/test_quick.sh --all`（即 `flutter test --no-pub`） | 2000+ 项 / 数分钟 | 交付前收尾 |
-| CI | `android-apk.yml` 与 `windows.yml` 每次 master push 全量 | 同全量 | 兜底 |
+| CI | `android-apk.yml` 每次 master push 全量 | 同全量 | 兜底 |
 
 - `test_quick.sh` 的模块词按测试文件名**子串**匹配：`home` 会同时命中 `home_page_test.dart`、`home_scroll_cost_test.dart`、`real_home_payload_test.dart`（子串宽是特性，`provider` 这类词会带出全部 `*_provider_test.dart`）。多个词合并去重后一次跑，也可直接传测试文件路径；拼错的模块词是硬错误，不会静默少跑。
 - 脚本固定带 `--no-pub`：首次 `flutter pub get` 之后，每次运行前的依赖解析是纯启动开销。`--concurrency=N` 可提并行（默认沿用 Flutter 的 4）。
@@ -745,4 +739,4 @@ ChapterContent 原文、legacyText、缓存和导入文件保持原语义。Read
 
 阅读器首次加载、预取补图/时间轴刷新及规则变化共用转换服务，以章节、原文版本和 generation 拒绝迟到结果；规则与刷新并发时以最新原文重新生成。原始标题去除只执行一次，避免正文被替换成标题后再次被误删。系统 TTS 首章与后续章节均从原文转换，固定同一会话快照；规则保存时关闭旧会话并清理高亮，需重新启动。真人录音不变。
 
-验证：运行 flutter analyze --no-pub 与 flutter test；重点套件为 text_replacement_*、reader_text_replacement、reader_paragraph_actions、reader_chapter_layout、reader_pagination、reader_illustrations、offline_reader 和 system_tts。Android/Windows 的构建与真机超时终止行为仍须在对应环境验收；Linux 主机单测不代表设备或 AOT 验收完成。
+验证：运行 flutter analyze --no-pub 与 flutter test；重点套件为 text_replacement_*、reader_text_replacement、reader_paragraph_actions、reader_chapter_layout、reader_pagination、reader_illustrations、offline_reader 和 system_tts。Android 的构建与真机超时终止行为仍须在设备上验收；主机单测不代表设备或 AOT 验收完成。

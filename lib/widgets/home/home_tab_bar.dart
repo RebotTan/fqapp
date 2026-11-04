@@ -12,9 +12,6 @@ class HomeCategory {
 const homeCategories = [
   HomeCategory('推荐', Icons.circle),
   HomeCategory('小说', Icons.circle),
-  HomeCategory('短剧', Icons.circle),
-  HomeCategory('漫剧', Icons.circle),
-  HomeCategory('漫画', Icons.circle),
   HomeCategory('听书', Icons.circle),
 ];
 

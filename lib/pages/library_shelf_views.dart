@@ -63,17 +63,13 @@ mixin _LibraryShelfViews on _LibraryPageActions {
           ShelfTokens.contentBottomInset,
         ),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: isWindowsDesktop
-              ? (constraints.maxWidth / 170).floor().clamp(3, 10)
-              : ShelfTokens.gridColumns,
+          crossAxisCount: ShelfTokens.gridColumns,
           crossAxisSpacing: ShelfTokens.gridSpacing,
           mainAxisSpacing: ShelfTokens.gridRunSpacing,
           childAspectRatio: shelfGridChildAspectRatio(
             context,
             availableWidth: constraints.maxWidth,
-            columns: isWindowsDesktop
-                ? (constraints.maxWidth / 170).floor().clamp(3, 10)
-                : ShelfTokens.gridColumns,
+            columns: ShelfTokens.gridColumns,
           ),
         ),
         itemCount: entries.length,

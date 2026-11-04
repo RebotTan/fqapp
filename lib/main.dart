@@ -1,8 +1,5 @@
 import 'services/api_client.dart';
 import 'services/audio_downloader.dart';
-import 'widgets/desktop_app_frame.dart';
-import 'services/native_player.dart';
-import 'services/desktop_platform.dart';
 import 'services/platform_channel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -19,30 +16,21 @@ import 'dart:ui' show ImageFilter;
 import 'pages/home_page.dart';
 import 'pages/audio_page.dart';
 import 'pages/cached_books_page.dart';
-import 'pages/drama_page.dart';
 import 'pages/library_page.dart';
 import 'pages/mine_page.dart';
 import 'services/app_log.dart';
 import 'services/app_theme.dart';
 import 'services/audio_download_store.dart';
 import 'services/audio_floating_routes.dart';
-import 'services/drama_cache_preferences.dart';
 import 'services/audio_preferences.dart';
 import 'services/player_preferences.dart';
-import 'services/player_layout_preferences.dart';
 import 'services/backend_service.dart';
-import 'services/digg_store.dart';
-import 'services/drama_channel_preferences.dart';
-import 'services/drama_download_store.dart';
-import 'services/drama_downloader.dart';
+import 'services/share_plus_lite.dart';
 import 'services/fair_memory.dart';
 import 'services/connectivity_status.dart';
 import 'services/home_feed_cache.dart';
 import 'services/library_store.dart';
 import 'services/rank_cache.dart';
-import 'services/player_style_config.dart';
-import 'services/short_series_font_scale.dart';
-import 'services/playlet_share.dart';
 import 'services/poster_cache.dart';
 import 'services/shelf_store.dart';
 import 'services/swipe_guide_store.dart';
@@ -70,7 +58,6 @@ Future<void> main() async {
 /// `runApp` 之前的运行时装配：桌面窗口回调、应用内日志、分享与 Rust 日志的桥。
 /// 这些都不决定界面能不能起来，所以失败只记日志（见 [main]）。
 Future<void> _prepareRuntime() async {
-  if (isWindowsDesktop) await DesktopPlatform.instance.initialize();
   // 应用内日志：接管 debugPrint 与 FlutterError.onError，未处理异步异常由
   // [main] 的 runZonedGuarded 捕获；文件持久化异步开启，失败只退回内存模式。
   AppLog.instance.install();
@@ -89,25 +76,6 @@ Future<void> _prepareRuntime() async {
   // Rust 核心日志的读取入口：日志页「Rust」视图读 runtime_dir/rust.log。
   // 核心只在 Android 落盘（桌面/测试构建不装 logger），读不到时页面给空态。
   RustLogSource.reader = BackendService.instance.readRustLog;
-  if (isWindowsDesktop) {
-    DesktopPlatform.instance.beforeClose = () async {
-      DramaDownloader.instance.pauseAll();
-      AudioDownloader.instance.pauseAll();
-      await FairMemoryService.instance.flushForExit();
-      try {
-        await NativePlayer.pauseOthers();
-      } catch (error, stack) {
-        // 退出路径继续往下走，但失败要留痕：否则「关闭后还有声音」无从查起。
-        AppLog.w('exit', '退出前暂停播放器失败', error: error, stack: stack);
-      }
-      try {
-        await BackendService.instance.stop();
-      } catch (error, stack) {
-        AppLog.w('exit', '退出前停止后端失败', error: error, stack: stack);
-      }
-      await Hive.close();
-    };
-  }
 }
 
 Future<void> _initializeLocalData() async {
@@ -130,12 +98,6 @@ Future<void> _initializeLocalData() async {
     // The 加入书架 collection is optional data: a failure here must not block
     // startup, which is why it shares the retryable bootstrap with the history.
     ShelfStore.instance.init(),
-    // 短剧 feed 的 点赞 也是可选本地数据，与书架同一处理：开箱失败不能让
-    // 启动失败，否则一个纯装饰性的集合会拖住短剧页之外的所有功能。
-    optional(() async {
-      await DiggStore.instance.init();
-      // DiggStore 自己把「不可用」当成「没有点赞」处理（见 _openBox）。
-    }),
     // 「上滑查看更多视频」的一次性标记同样是可选数据：读不到就当没弹过，
     // 弹一次的语义退化成「本次启动弹一次」也不能拖住启动。
     optional(() async {
@@ -156,25 +118,14 @@ Future<void> _initializeLocalData() async {
       // RankCache 自己把「不可用」当成「没有缓存」处理。
     }),
     // 官方播放页开关（PlayerBottomStyleConfig / 清屏反转 / 横屏锁）随同一份
-    // 运行时配置读取；读不到就用默认值，不能拖住启动。
-    PlayerStyleConfig.load(),
-    // 官方播放页字号档（jk3/b 的 SP）同理：读失败回标准档，不拖启动。
-    ShortSeriesFontScale.load(),
     // 解码器偏好必须先进内存：`NativePlayer.create` 在起播路径上直接读它，
     // 不能在那里再 await 读盘（见 DecoderPreferenceCache 的说明）。
     optional(DecoderPreferenceCache.load),
-    // 离线缓存的记录箱启动即打开：播放器的离线命中只在 box 就绪时才查
-    // （避免运行中途首次 openBox 失败产生游离异步错误）。可选数据，失败
-    // 只退化为「本会话不查离线」。
-    optional(HiveDramaDownloadStore.instance.warmUp),
     // 听书音频离线记录箱：与短剧箱分开，同样只在就绪时才查离线命中。
     optional(HiveAudioDownloadStore.instance.warmUp),
   ]);
   // 听书后台播放开关：异步读取 SharedPreferences，失败退化为默认开启。
   unawaited(AudioPreferences.instance.load());
-  // 短剧「边看边往后缓存」的开关与集数：同一条装配链里读，避免播放页
-  // 起来时还没加载完、拿默认值把用户关掉的开关又打开。
-  unawaited(DramaCachePreferences.instance.load());
   // 短剧切后台悬浮窗开关（#24）：异步读取，失败退化为默认关闭。
   unawaited(PlayerPreferences.loadFloatingWindow());
   // 离线缓存的网络门（官方 onNetChangeCheck）：断网/只剩计费链路时
@@ -182,10 +133,6 @@ Future<void> _initializeLocalData() async {
   try {
     Connectivity().onConnectivityChanged.listen((results) {
       final view = foldConnectivity(results);
-      DramaDownloader.instance.updateConnectivity(
-        online: view.online,
-        metered: view.metered,
-      );
       AudioDownloader.instance.updateConnectivity(
         online: view.online,
         metered: view.metered,
@@ -212,14 +159,6 @@ Future<void> _initializeLocalData() async {
   einkModeNotifier.value = sp.getBool(einkModeKey) ?? false;
   // OLED 纯黑与墨水屏互斥；两个旧值同时为 true 时墨水屏优先。
   oledModeNotifier.value = sp.getBool(oledModeKey) ?? false;
-  // 播放页布局（短剧上下分屏/左右分栏）同样是可选偏好：读不到退化为
-  // 沉浸式，不阻塞启动。
-  PlayerLayoutPreferences.mode.value = PlayerLayoutPreferences.decode(
-    sp.getString(PlayerLayoutPreferences.key),
-  );
-  // 短剧分区上次停在哪个频道（官方 SP `last_tab_type`）：同样只读一次，
-  // 页面在 initState 同步取用，首帧不会先闪「推荐」。
-  DramaChannelPreferences.load(sp);
 }
 
 class FqApp extends StatefulWidget {
@@ -233,13 +172,9 @@ class _FqAppState extends State<FqApp> {
   // Official tabbar + 18dp applies on every page. Our floating dock is 64
   // high with an 8px gap; the desktop shell has no bottom bar.
   final _audioRoutes = AudioFloatingRoutes(
-    defaultBottomInset: isWindowsDesktop ? 0 : 72,
+    defaultBottomInset: 72,
   );
-  // Desktop fullscreen reparents the content; keep the playback owner alive.
-  final _audioScopeKey = GlobalKey();
-  final _navigatorKey = isWindowsDesktop
-      ? DesktopPlatform.navigatorKey
-      : GlobalKey<NavigatorState>();
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void dispose() {
@@ -265,16 +200,14 @@ class _FqAppState extends State<FqApp> {
                   navigatorObservers: [_audioRoutes],
                   builder: (context, child) {
                     final playback = AudioPlaybackScope(
-                      key: _audioScopeKey,
+                      
                       navigatorKey: _navigatorKey,
                       recentListen: loadRecentListen,
                       child: child ?? const SizedBox.shrink(),
                     );
                     return AudioFloatingRouteScope(
                       routes: _audioRoutes,
-                      child: isWindowsDesktop
-                          ? DesktopAppFrame(child: playback)
-                          : playback,
+                      child: playback,
                     );
                   },
                   title: '什锦铺',
@@ -459,15 +392,9 @@ class _RootShellState extends State<RootShell> {
   @override
   void initState() {
     super.initState();
-    // 短剧频道在推荐（视频流）与浅色页之间切换时，悬浮 dock 和系统导航栏
-    // 要跟着换肤，所以停在壳层的 build 里监听。
-    dramaLightPageNotifier.addListener(_onDramaChromeChanged);
     _startBackend();
   }
 
-  void _onDramaChromeChanged() {
-    if (mounted) setState(() {});
-  }
 
   Future<void> _startBackend() async {
     setState(() {
@@ -489,7 +416,6 @@ class _RootShellState extends State<RootShell> {
 
   @override
   void dispose() {
-    dramaLightPageNotifier.removeListener(_onDramaChromeChanged);
     _homeScroll.dispose();
     super.dispose();
   }
@@ -547,34 +473,10 @@ class _RootShellState extends State<RootShell> {
         ),
       );
     }
-    if (isWindowsDesktop) {
-      return ValueListenableBuilder<int>(
-        valueListenable: desktopTab,
-        builder: (context, index, _) {
-          AudioFloatingRouteScope.configure(context, hidden: index == 1);
-          return LazyIndexedStack(
-            index: index,
-            children: [
-              HomePage(cueLoader: () => ApiClient.instance.searchCue()),
-              const DramaPage(),
-              LibraryPage(
-                onBrowse: () => desktopTab.value = 0,
-                onFindDrama: () => desktopTab.value = 1,
-              ),
-              const MinePage(),
-            ],
-          );
-        },
-      );
-    }
-    AudioFloatingRouteScope.configure(context, hidden: _index == 1);
+    AudioFloatingRouteScope.configure(context, hidden: false);
     final palette = HomePalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isDramaTab = _index == 1;
-    // 短剧的推荐频道压在全屏视频流上，dock 用深色玻璃；看剧/漫剧/最近/收藏
-    // 是浅色页，dock 跟主题走，否则浅色外观下页面是奶白、dock 还是黑的。
-    final dramaOnVideo = isDramaTab && !dramaLightPageNotifier.value;
-    final glassDark = isDark || dramaOnVideo;
+    final glassDark = isDark;
     // 墨水屏模式：本 build 由 Theme 变化触发重建（上面读了 Theme.of），
     // 这里直接读 notifier 当前值即可拿到最新开关，不另加监听。
     final eink = einkModeNotifier.value;
@@ -635,11 +537,6 @@ class _RootShellState extends State<RootShell> {
             label: '首页',
           ),
           NavigationDestination(
-            icon: Icon(LucideIcons.clapperboard),
-            selectedIcon: Icon(LucideIcons.clapperboard),
-            label: '短剧',
-          ),
-          NavigationDestination(
             icon: Icon(LucideIcons.library_big),
             selectedIcon: Icon(LucideIcons.library_big),
             label: '书架',
@@ -678,7 +575,7 @@ class _RootShellState extends State<RootShell> {
     // 系统导航栏（Android 底部系统自绘的那条）按当前画布取色。Flutter 的
     // light / dark 两套预设都把它写成纯黑底 + 白图标，浅色页面下会在最底部
     // 留一条突兀的黑带；短剧只有视频流（推荐）背后是视频，仍用黑。
-    final lightSystemIcons = dramaOnVideo || isDark;
+    final lightSystemIcons = isDark;
     return Scaffold(
       extendBody: true,
       // 状态栏图标亮度挂在壳层、按选中 tab 切换：短剧页是黑底视频流（官方
@@ -692,10 +589,10 @@ class _RootShellState extends State<RootShell> {
                     ? SystemUiOverlayStyle.light
                     : SystemUiOverlayStyle.dark)
                 .copyWith(
-                  systemNavigationBarColor: dramaOnVideo
+                  systemNavigationBarColor: glassDark
                       ? Colors.black
                       : palette.canvas,
-                  systemNavigationBarDividerColor: dramaOnVideo
+                  systemNavigationBarDividerColor: glassDark
                       ? Colors.black
                       : palette.canvas,
                   systemNavigationBarIconBrightness: lightSystemIcons
@@ -709,12 +606,8 @@ class _RootShellState extends State<RootShell> {
               scrollController: _homeScroll,
               cueLoader: () => ApiClient.instance.searchCue(),
             ),
-            const DramaPage(),
-            // 空书架上的「去书城找书」切回首页 tab；收藏空态的「找短剧」
-            // 切到短剧 tab。
             LibraryPage(
               onBrowse: () => setState(() => _index = 0),
-              onFindDrama: () => setState(() => _index = 1),
             ),
             const MinePage(),
           ],
@@ -765,7 +658,7 @@ class _RootShellState extends State<RootShell> {
                         ),
                         child: navBar,
                       )
-                    : isDramaTab || oled
+                    : oled
                     ? staticNavBar
                     : BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),

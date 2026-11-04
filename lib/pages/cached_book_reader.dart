@@ -7,10 +7,9 @@ import '../services/book_updates.dart';
 import '../services/chapter_cache_store.dart';
 import '../services/connectivity_status.dart';
 import '../services/library_store.dart';
-import '../services/media_history_store.dart';
 import '../services/player_history.dart';
 import '../services/reader_history.dart';
-import 'comic_reader_page.dart';
+
 import 'reader_page.dart';
 
 /// 最近读过且本地还留着目录时直接续读，不等待详情页或网络探测。
@@ -26,15 +25,10 @@ Future<bool> openRecentBook(
   BookDirectoryLoader? directoryLoader,
 }) async {
   final kind = item.kind;
-  if ((kind != 'book' && kind != 'manga') || item.id.isEmpty) return false;
-  final isManga = kind == 'manga';
+  if (kind != 'book' || item.id.isEmpty) return false;
   final store = cache ?? ChapterCacheStore.instance;
   final baseStore = readerStore ?? LibraryStore.instance;
-  // 漫画进度写在独立作用域里（见 ComicReaderPage 的 scopedHistoryStore），
-  // 用未分作用域的 store 读不到，会误判成「没读过」。
-  final historyStore = isManga
-      ? scopedHistoryStore(baseStore, 'manga')
-      : baseStore;
+  final historyStore = baseStore;
   CachedBook? book;
   int? index;
   try {
@@ -42,10 +36,7 @@ Future<bool> openRecentBook(
     if (saved == null || (saved['kind'] != null && saved['kind'] != kind)) {
       return false;
     }
-    // 漫画没有正文缓存，只能看目录是否存过；小说要求正文还在（下面再判）。
-    book = isManga
-        ? await store.savedCatalogue(item.id)
-        : await store.cachedBook(item.id);
+    book = await store.cachedBook(item.id);
     if (book == null) return false;
     index = resumeEpisodeIndex({
       ...saved,
@@ -53,10 +44,8 @@ Future<bool> openRecentBook(
         'chapterId': saved['chapterId'].toString(),
     }, book.chapters);
     if (index == null) return false;
-    if (!isManga &&
-        !(await store.cachedChapterIds(
-          item.id,
-        )).contains(book.chapters[index].itemId)) {
+    if (!(await store.cachedChapterIds(item.id))
+        .contains(book.chapters[index].itemId)) {
       return false;
     }
   } catch (_) {
@@ -71,19 +60,7 @@ Future<bool> openRecentBook(
   await Navigator.push<void>(
     context,
     MaterialPageRoute(
-      builder: (_) => isManga
-          ? ComicReaderPage(
-              bookId: item.id,
-              title: title,
-              cover: cover,
-              chapters: cachedBook.chapters,
-              startIndex: startIndex,
-              // 阅读器自己会写默认缓存，注入的缓存供测试与调用方覆盖。
-              readerStore: baseStore,
-              cache: cache,
-              shelfItem: item,
-            )
-          : _RecentBookReader(
+      builder: (_) => _RecentBookReader(
               book: CachedBook(
                 id: item.id,
                 title: title,

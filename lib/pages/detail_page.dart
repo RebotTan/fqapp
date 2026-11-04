@@ -1,5 +1,3 @@
-import '../widgets/desktop_chapter_sidebar.dart';
-import '../services/desktop_platform.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,7 +8,6 @@ import '../models/book_comment.dart';
 import '../models/book_detail.dart';
 import '../models/media_item.dart';
 import '../models/media_description.dart';
-import '../models/series_detail.dart';
 import '../models/shuqi_book.dart';
 import '../services/api_client.dart';
 import '../services/audio_history.dart';
@@ -32,18 +29,13 @@ import '../widgets/detail/detail_id_row.dart';
 import '../widgets/detail/detail_read_bar.dart';
 import '../widgets/detail/detail_reviews.dart';
 import '../widgets/detail/detail_reviews_sheet.dart';
-import '../widgets/detail/detail_sections.dart';
 import '../widgets/detail/detail_states.dart';
-import '../widgets/detail/detail_style.dart';
 import '../widgets/home/home_design.dart';
-import '../widgets/home/home_media_card.dart';
 import '../widgets/home/home_shelf.dart';
 import '../widgets/media_card.dart';
 import 'audio_page.dart';
 import 'author_page.dart';
 import 'cached_book_reader.dart';
-import 'comic_reader_page.dart';
-import 'player_page.dart';
 import 'reader_page.dart';
 import 'shuqi_detail_page.dart';
 
@@ -91,9 +83,6 @@ class DetailPage extends StatefulWidget {
   directoryLoader;
   final DetailExtrasLoader? extrasLoader;
 
-  /// Series detail (cast list) for short dramas and manju. Only consulted for
-  /// video kinds; other content has no cast.
-  final Future<SeriesDetail> Function(String seriesId)? seriesLoader;
   final ReaderStore? readerStore;
 
   /// Offline chapter cache behind the download action. Injectable so tests can
@@ -113,7 +102,6 @@ class DetailPage extends StatefulWidget {
     this.detailLoader,
     this.directoryLoader,
     this.extrasLoader,
-    this.seriesLoader,
     this.readerStore,
     this.chapterCache,
     this.chapterLoader,
@@ -133,7 +121,6 @@ class DetailPage extends StatefulWidget {
 class _DetailPageState extends State<DetailPage> {
   Map<String, dynamic>? _detail;
   BookDetail? _bookDetail;
-  SeriesDetail _series = SeriesDetail.empty;
   BookCommentPage _comments = const BookCommentPage();
   bool _commentsLoadingMore = false;
   List<Chapter> _allChapters = [];
@@ -262,7 +249,6 @@ class _DetailPageState extends State<DetailPage> {
         _reviewsError = null;
         _detail = null;
         _bookDetail = null;
-        _series = SeriesDetail.empty;
         _comments = const BookCommentPage();
         _allChapters = const [];
         _opening = false;
@@ -299,9 +285,6 @@ class _DetailPageState extends State<DetailPage> {
     // page. Each keeps its own inline error so a failure is visible and
     // retryable in its own section.
     final extrasFuture = _capture(_loadExtras(_contentId));
-    final seriesFuture = _isVideo
-        ? _capture((widget.seriesLoader ?? _defaultSeries)(_contentId))
-        : null;
     final detailResult = await detailFuture;
     final directoryResult = await directoryFuture;
     if (!mounted || generation != _loadGeneration) return;
@@ -356,12 +339,6 @@ class _DetailPageState extends State<DetailPage> {
     await _applyExtras(extrasFuture, generation);
     if (!mounted || generation != _loadGeneration) return;
 
-    if (seriesFuture == null) return;
-    final series = await seriesFuture;
-    if (!mounted || generation != _loadGeneration) return;
-    if (series.value case final SeriesDetail loaded) {
-      setState(() => _series = loaded);
-    }
   }
 
   /// Applies the review payload or records its own section error.
@@ -484,19 +461,10 @@ class _DetailPageState extends State<DetailPage> {
     return index < 0 ? null : index;
   }
 
-  /// Same offline rule as [_loadExtras]: an injected loader means the caller
-  /// drives its own data.
-  Future<SeriesDetail> _defaultSeries(String seriesId) {
-    if (widget.detailLoader != null || widget.directoryLoader != null) {
-      return Future.value(SeriesDetail.empty);
-    }
-    return ApiClient.instance.seriesDetail(seriesId);
-  }
 
   @override
   Widget build(BuildContext context) {
     final palette = HomePalette.of(context);
-    final desktop = isWindowsDesktop && MediaQuery.sizeOf(context).width >= 700;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value:
           (palette.dark
@@ -508,9 +476,7 @@ class _DetailPageState extends State<DetailPage> {
               ),
       child: Scaffold(
         backgroundColor: palette.canvas,
-        appBar: desktop
-            ? null
-            : AppBar(
+        appBar: AppBar(
                 backgroundColor: palette.canvas,
                 surfaceTintColor: Colors.transparent,
                 scrolledUnderElevation: 0,
@@ -548,10 +514,8 @@ class _DetailPageState extends State<DetailPage> {
                   ),
                 ],
               ),
-        body: desktop ? _desktopBody(palette) : _phoneBody(palette),
-        bottomNavigationBar: desktop
-            ? null
-            : DetailReadBar(
+        body: _phoneBody(palette),
+        bottomNavigationBar: DetailReadBar(
                 label: _readBarLabel,
                 opening: _opening,
                 enabled: _supported && !_loading && _allChapters.isNotEmpty,
@@ -617,218 +581,12 @@ class _DetailPageState extends State<DetailPage> {
     ),
   );
 
-  /// 桌面两栏布局的左栏卡片（PR #104 评审原型）：封面、书名、元信息、书架/刷新
-  /// 和主操作全部收进一张白卡，主按钮不再横跨整个窗口底部。
-  Widget _desktopSideCard(HomePalette palette, {bool compact = false}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: palette.line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              ValueListenableBuilder<int>(
-                valueListenable: ShelfStore.instance.listenable,
-                builder: (context, _, _) => DetailShelfPill(
-                  inShelf: _inShelf,
-                  enabled: !_loading && _supported,
-                  onTap: _toggleShelf,
-                  keyName: 'detail_shelf_button_desktop',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          DetailHero(
-            item: widget.item,
-            detail: _bookDetail,
-            onOpenAuthor: _openAuthorAction,
-            lastChapterTitle: _latestChapterTitle,
-            desktop: true,
-            compactDesktop: compact,
-          ),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            key: const Key('detail_read_button_desktop'),
-            onPressed: _opening || _loading || _allChapters.isEmpty
-                ? null
-                : () => unawaited(_openLastPosition()),
-            style: detailPrimaryButtonStyle(
-              palette,
-              minimumSize: const Size.fromHeight(44),
-            ),
-            icon: Icon(homeKindIcon(widget.item.kind), size: 18),
-            label: Text(
-              _opening ? '正在打开…' : _readBarLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (_isBook) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    key: const Key('detail_listen_button_desktop'),
-                    onPressed: _loading || _allChapters.isEmpty
-                        ? null
-                        : _openListening,
-                    style: detailOutlineButtonStyle(
-                      palette,
-                      minimumSize: const Size.fromHeight(44),
-                    ),
-                    icon: const Icon(LucideIcons.headphones, size: 16),
-                    label: const Text('听书'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    key: const Key('detail_download_button_desktop'),
-                    onPressed: _loading || _allChapters.isEmpty
-                        ? null
-                        : _toggleDownload,
-                    style: detailOutlineButtonStyle(
-                      palette,
-                      minimumSize: const Size.fromHeight(44),
-                    ),
-                    icon: const Icon(LucideIcons.download, size: 16),
-                    label: Text(_downloadProgress == null ? '下载' : '下载中'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 12),
-          DetailIdRow(id: _contentId, compact: true),
-        ],
-      ),
-    );
-  }
 
-  /// Masthead metadata, author, stats, summary, tags, catalog and reviews —
-  /// the section order of the official detail page.
-  /// 右栏分节（PR #104 评审原型）：桌面宽屏下把「简介 / 目录 / 评论」拆成可切换
-  /// 的三节，避免两百多章的目录把详情页拉成一条长滚动；移动端仍按官方顺序整列
-  /// 铺开，行为不变。
-  int _desktopSection = 0;
 
-  Widget _desktopPanel(HomePalette palette, Widget child) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: palette.surface,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: palette.line),
-    ),
-    child: child,
-  );
 
-  Widget _desktopBody(HomePalette palette) {
-    final width = MediaQuery.sizeOf(context).width;
-    final threeColumns = width >= 1400;
-    final sideWidth = width >= 1200 ? 340.0 : 320.0;
-    Widget content() => !_supported
-        ? _stateCard(
-            icon: LucideIcons.file_question_mark,
-            title: '暂不支持此内容类型',
-            message: '可以返回继续发现其他故事。',
-          )
-        : _loading
-        ? _loadingView(palette)
-        : _content(palette, desktop: true);
-    Widget mainScroll() => RefreshIndicator(
-      onRefresh: _load,
-      color: palette.eink ? palette.ink : HomePalette.accent,
-      backgroundColor: palette.surface,
-      child: SingleChildScrollView(
-        controller: _scroll,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 32),
-        child: content(),
-      ),
-    );
-    if (width < 1000) {
-      return RefreshIndicator(
-        onRefresh: _load,
-        color: palette.eink ? palette.ink : HomePalette.accent,
-        backgroundColor: palette.surface,
-        child: SingleChildScrollView(
-          key: const Key('desktop-detail-compact'),
-          controller: _scroll,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _desktopSideCard(palette, compact: true),
-              const SizedBox(height: 24),
-              content(),
-            ],
-          ),
-        ),
-      );
-    }
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1520),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-          child: Row(
-            key: Key(
-              threeColumns ? 'desktop-detail-three' : 'desktop-detail-two',
-            ),
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: sideWidth,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 32),
-                  child: _desktopSideCard(palette),
-                ),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
-                    child: mainScroll(),
-                  ),
-                ),
-              ),
-              if (threeColumns) ...[
-                const SizedBox(width: 24),
-                SizedBox(
-                  width: 260,
-                  child: SingleChildScrollView(
-                    key: const Key('desktop-detail-information'),
-                    padding: const EdgeInsets.only(bottom: 32),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: _desktopInfoRail(palette),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _content(HomePalette palette, {bool desktop = false}) {
+  Widget _content(HomePalette palette) {
     final hasReviews =
         _comments.comments.isNotEmpty || _comments.totalCount > 0;
-    if (!desktop) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -841,31 +599,6 @@ class _DetailPageState extends State<DetailPage> {
           ),
         ],
       );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _desktopSectionTabs(palette),
-        const SizedBox(height: 20),
-        _desktopPanel(
-          palette,
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: switch (_desktopSection) {
-              1 => _desktopDirectoryTab(palette),
-              2 => <Widget>[
-                _reviewsSection(
-                  palette,
-                  hasReviews: hasReviews,
-                  showEmpty: true,
-                ),
-              ],
-              _ => <Widget>[_introSection(palette, desktop: true)],
-            },
-          ),
-        ),
-      ],
-    );
   }
 
   /// `3 天前` — when the saved place was written, muted in 目录 progress.
@@ -881,7 +614,7 @@ class _DetailPageState extends State<DetailPage> {
     return '${date.month}月${date.day}日';
   }
 
-  Widget _introSection(HomePalette palette, {bool desktop = false}) {
+  Widget _introSection(HomePalette palette) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -894,14 +627,9 @@ class _DetailPageState extends State<DetailPage> {
         ] else ...[
           DetailDescription(
             text: extractMediaDescription(_detail),
-            desktop: desktop,
+
           ),
         ],
-        if (_series.cast.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(homeGutter, 18, homeGutter, 0),
-            child: DetailCastRow(cast: _series.cast),
-          ),
       ],
     );
   }
@@ -972,74 +700,6 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
-  List<Widget> _desktopDirectoryTab(HomePalette palette) => [
-    Text(
-      _directoryTrailing,
-      style: TextStyle(color: palette.muted, fontSize: 13),
-    ),
-    const SizedBox(height: 16),
-    SizedBox(
-      height: (MediaQuery.sizeOf(context).height - 280).clamp(260.0, 640.0),
-      child: DesktopChapterSidebar(
-        width: double.infinity,
-        chapterUnit: _chapterUnit,
-        chapters: _allChapters,
-        currentIndex: _resumeIndex ?? -1,
-        onSelected: (index) => unawaited(_openChapter(_allChapters[index])),
-      ),
-    ),
-  ];
-
-  /// Three-column desktop rail: the tags the main column omits.
-  List<Widget> _desktopInfoRail(HomePalette palette) {
-    final detail = _bookDetail;
-    if (detail == null || detail.tags.isEmpty) return const [];
-    return [DetailTagChips(tags: detail.tags, desktop: true)];
-  }
-
-  Widget _desktopSectionTabs(HomePalette palette) {
-    const labels = ['简介', '目录', '评论'];
-    return Row(
-      children: [
-        for (var i = 0; i < labels.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              key: Key('detail_section_$i'),
-              borderRadius: BorderRadius.circular(18),
-              onTap: () {
-                setState(() => _desktopSection = i);
-                if (_scroll.hasClients &&
-                    MediaQuery.sizeOf(context).width >= 1000) {
-                  _scroll.jumpTo(0);
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: _desktopSection == i ? palette.ink : palette.surface,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: _desktopSection == i ? palette.ink : palette.line,
-                  ),
-                ),
-                child: Text(
-                  labels[i],
-                  style: TextStyle(
-                    color: _desktopSection == i ? palette.canvas : palette.ink,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
 
   Widget _emptyReviews(HomePalette palette) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 24),
@@ -1422,19 +1082,6 @@ class _DetailPageState extends State<DetailPage> {
     final index = _allChapters.indexWhere((c) => c.itemId == chapter.itemId);
     final startIndex = index < 0 ? 0 : index;
     final page = switch (widget.item.kind) {
-      'video' || 'manju' => PlayerPage(
-        bookId: _contentId,
-        kind: widget.item.kind,
-        title: widget.item.title,
-        cover: widget.item.cover,
-        historyStore: widget.readerStore,
-        eps: _allChapters,
-        startIndex: startIndex,
-        // 搜索→详情页→播放与短剧页同源（kind 已是 video/manju），不传
-        // shortSeries 会让长按面板/弹幕/剧评/已看标记/清晰度整组失效
-        // （它们都挂在 PlayerPage.shortSeries 门上）。
-        shortSeries: true,
-      ),
       'audio' => AudioPage(
         bookId: _contentId,
         title: widget.item.title,
@@ -1443,16 +1090,6 @@ class _DetailPageState extends State<DetailPage> {
         chapters: _allChapters,
         startIndex: startIndex,
         resumeSession: false,
-      ),
-      'manga' => ComicReaderPage(
-        bookId: _contentId,
-        title: widget.item.title,
-        cover: widget.item.cover,
-        readerStore: widget.readerStore,
-        chapters: _allChapters,
-        startIndex: startIndex,
-        // 阅读器内「加入书架」沿用它：书架 key 需要 seriesId/kind 一致（#103）。
-        shelfItem: widget.item,
       ),
       _ => ReaderPage(
         bookId: _contentId,

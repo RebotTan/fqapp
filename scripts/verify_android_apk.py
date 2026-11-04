@@ -35,12 +35,6 @@ REQUIRED_LIBRARIES_BY_ABI = {
         "lib/arm64-v8a/libflutter.so",
         "lib/arm64-v8a/libapp.so",
     },
-    "armeabi-v7a": {
-        "lib/armeabi-v7a/libfqapi_core.so",
-        "lib/armeabi-v7a/libshortplay_crypto.so",
-        "lib/armeabi-v7a/libflutter.so",
-        "lib/armeabi-v7a/libapp.so",
-    },
 }
 # The ARM64 set, kept for callers that predate the --abi option.
 REQUIRED_LIBRARIES = REQUIRED_LIBRARIES_BY_ABI["arm64-v8a"]

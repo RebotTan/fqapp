@@ -212,5 +212,4 @@ mixin _ReaderPageFields on State<ReaderPage> {
   // reading, so immersive stays on; other routes still release it.
   bool _ideasSheetOpen = false;
 
-  DateTime _desktopWheelAt = DateTime.fromMillisecondsSinceEpoch(0);
 }

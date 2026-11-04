@@ -8,7 +8,7 @@ import 'package:flutter_lucide/flutter_lucide.dart';
 
 import '../services/app_log.dart';
 import '../services/book_txt_export.dart';
-import '../services/playlet_share.dart';
+import '../services/share_plus_lite.dart';
 import '../widgets/home/home_design.dart';
 import '../widgets/home/home_feed_states.dart';
 import '../widgets/home/home_sheet.dart';
