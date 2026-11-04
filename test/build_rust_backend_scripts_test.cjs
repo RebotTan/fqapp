@@ -312,7 +312,6 @@ test('workflow path filters are defined once and referenced by anchor', () => {
   // 只在 push 下定义 &anchor，pull_request 用 *anchor 引用。
   const cases = [
     { file: 'android-apk.yml', anchor: 'app_paths' },
-    { file: 'windows.yml', anchor: 'windows_paths' },
     { file: 'native-crypto.yml', anchor: 'native_paths' },
   ];
   for (const { file, anchor } of cases) {
@@ -349,10 +348,7 @@ test('native-crypto runs the host atempo and resample regressions', () => {
   );
 });
 
-test('the size budget gate runs in the Dart gate, not the Windows build', () => {
-  // 行数预算只读源码，不依赖 Windows 工具链；绑在 windows.yml 上就要排在
-  // ffmpeg 下载后面。它必须留在 dart-gate，否则这个门禁会随 Windows job 一起
-  // 被跳过或拖慢。
+test('the size budget gate runs in the Dart gate', () => {
   const apk = fs.readFileSync(
     path.join(appDir, '.github', 'workflows', 'android-apk.yml'),
     'utf8',
@@ -361,14 +357,6 @@ test('the size budget gate runs in the Dart gate, not the Windows build', () => 
   assert.ok(
     dartGate.includes('bash scripts/check_line_budget.sh'),
     'the dart-gate job must run scripts/check_line_budget.sh',
-  );
-  const windows = fs.readFileSync(
-    path.join(appDir, '.github', 'workflows', 'windows.yml'),
-    'utf8',
-  );
-  assert.ok(
-    !windows.includes('check_line_budget'),
-    'the Windows job must not run the size budget again',
   );
 });
 
@@ -443,11 +431,11 @@ test('the Rust build and host-test scripts always honor Cargo.lock', () => {
     `run_rust_host_tests.ps1: cargo build must use --locked: ${hostLine.trim()}`);
 });
 
-test('the Windows workflow resolves dependencies against the lockfile', () => {
+test('the Dart gate resolves dependencies against the lockfile', () => {
   // 不带 --enforce-lockfile 时 flutter pub get 会静默改锁文件，CI 测的
   // 就不是仓库里提交的依赖版本了。
   const workflow = fs.readFileSync(
-    path.join(appDir, '.github', 'workflows', 'windows.yml'),
+    path.join(appDir, '.github', 'workflows', 'android-apk.yml'),
     'utf8',
   );
   const commands = workflow
@@ -456,7 +444,7 @@ test('the Windows workflow resolves dependencies against the lockfile', () => {
     .join('\n');
   assert.ok(
     /^\s*run: flutter pub get --enforce-lockfile\s*$/m.test(commands),
-    'windows.yml must resolve dependencies with --enforce-lockfile',
+    'android-apk.yml must resolve dependencies with --enforce-lockfile',
   );
   assert.ok(
     !/^\s*run: flutter pub get\s*$/m.test(commands),
