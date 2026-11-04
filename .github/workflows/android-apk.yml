@@ -40,6 +40,10 @@ on:
 
 permissions:
   contents: read
+  # The tagged-build release step (gh release create) needs write on contents.
+  # Job-level scoping is not possible for a single step, so this is the
+  # workflow-level grant; the step itself is guarded by the v* + signed checks.
+  contents: write
 
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -592,6 +596,23 @@ jobs:
               printf '已验证 Rust 核心库与 APK ZIP 的 16 KiB 对齐；设备播放仍需实测。\n'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Release 发布：只有正式 tag 推送（v*）且带正式签名时才发布 GitHub
+      # Release。PR / 分支构建继续走 Artifacts（14 天），不占用 Releases 列表。
+      # contents: write 只在这一步生效（GITHUB_TOKEN 的最小权限）。
+      - name: Publish the tagged build to GitHub Releases
+        if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.has_release_signing == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ARM64: build/ci-artifacts/app-arm64-v8a-release.apk
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release create "$tag" \
+            --title "fqapp $tag" \
+            --generate-notes \
+            "$ARTIFACT_ARM64#fqapp-$tag-arm64-v8a.apk" \
+            build/ci-artifacts/build-info.txt#build-info.txt \
+            build/ci-artifacts/verification/arm64-v8a/report.json#verification-arm64.json
 
       - name: Remove temporary signing file
         if: always()
