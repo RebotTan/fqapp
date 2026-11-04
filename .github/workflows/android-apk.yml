@@ -39,10 +39,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  # The tagged-build release step (gh release create) needs write on contents.
-  # Job-level scoping is not possible for a single step, so this is the
-  # workflow-level grant; the step itself is guarded by the v* + signed checks.
+  # gh release create (guarded to v* + signed builds) needs write on contents;
+  # everything else only needs read.
   contents: write
 
 concurrency:
