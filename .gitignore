@@ -88,3 +88,4 @@ _sessionzip/
 # 本地语义索引（zg/codegraph 工具缓存）
 .codegraph/
 .zvec-grep/
+.signing/
