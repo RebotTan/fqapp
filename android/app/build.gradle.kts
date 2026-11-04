@@ -180,12 +180,11 @@ flutter {
 // (scripts/build_rust_backend.ps1 / .sh produce it).
 val verifyRequiredNativeLibraries = tasks.register("verifyRequiredNativeLibraries") {
     group = "verification"
-    description = "Checks the external Android Rust core libraries (ARM64 + ARMv7) before packaging."
+    description = "Checks the external Android Rust core library (ARM64) before packaging."
     // ABI directory -> (ELF class byte, e_machine). arm64-v8a is ELF64/AArch64
-    // (class 2, machine 183); armeabi-v7a is ELF32/ARM (class 1, machine 40).
+    // (class 2, machine 183). 32-bit ARM is not shipped, so it is not checked.
     val nativeLibraries = listOf(
         Triple("arm64-v8a", 2, 183),
-        Triple("armeabi-v7a", 1, 40),
     )
     val nativeFiles = nativeLibraries.map { (abi, _, _) ->
         layout.projectDirectory.file("src/main/jniLibs/$abi/libfqapi_core.so").asFile

@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Builds the Rust native core (rust/ -> libfqapi_core.so) for Android
-# (arm64-v8a and armeabi-v7a) and copies each library into its
+# arm64-v8a and copies the library into its
 # android/app/src/main/jniLibs/<abi> directory.
 #
-# Both ABIs are always built: the split APK build packages both (see the
-# split-per-ABI build in .github/workflows/android-apk.yml), so building
-# only one would leave the packaging verification without the other library
-# and fail the build.
+# Only ARM64 is built: the project ships 64-bit only (see the split-per-ABI
+# build in .github/workflows/android-apk.yml), so a 32-bit ARM library would
+# have nothing to package into.
 # Cargo caches per target, so a rebuild with no Rust changes is fast.
 #
 # This is the single entry point for the Rust build: it regenerates the
@@ -126,8 +125,6 @@ TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/$HOST_TAG/bin"
 # Cross-compiles the Rust core for one Android ABI and installs it into
 # that ABI's jniLibs directory. Arguments: Rust target triple, NDK clang
 # triple (without the API level or -clang suffix), jniLibs ABI directory.
-# The armv7 target uses the armv7a NDK triple (armeabi-v7a with NEON, the
-# same assumption the Flutter engine build makes for 32-bit ARM).
 build_android_target() {
   local rust_target="$1" clang_triple="$2" abi="$3"
   local cc_path="$TOOLCHAIN/${clang_triple}21-clang"
@@ -170,7 +167,6 @@ build_android_target() {
 }
 
 build_android_target aarch64-linux-android aarch64-linux-android arm64-v8a
-build_android_target armv7-linux-androideabi armv7a-linux-androideabi armeabi-v7a
 
 if [ "$HOST_LIB" -eq 1 ]; then
   echo "==> 编译宿主 cdylib..."

@@ -62,19 +62,18 @@ test('the build scripts pin the same flutter_rust_bridge version as the crate', 
   assert.match(yaml, /web:\s*false/);
 });
 
-test('the build scripts target Android ARM64 + ARMv7 with the project NDK and 16 KiB pages', () => {
+test('the build scripts target Android ARM64 with the project NDK and 16 KiB pages', () => {
   for (const name of ['build_rust_backend.ps1', 'build_rust_backend.sh']) {
     const source = readScript(name);
     assert.ok(source.includes('aarch64-linux-android'), name);
-    assert.ok(source.includes('armv7-linux-androideabi'), `${name} must build the 32-bit ARM target`);
     assert.ok(source.includes('28.2.13676358'), `${name} must pin the project NDK`);
     assert.ok(
       source.includes('libfqapi_core.so'),
       `${name} must produce libfqapi_core.so`,
     );
     assert.ok(
-      source.includes('jniLibs') && source.includes('arm64-v8a') && source.includes('armeabi-v7a'),
-      `${name} must install into jniLibs/arm64-v8a and jniLibs/armeabi-v7a`,
+      source.includes('jniLibs') && source.includes('arm64-v8a'),
+      `${name} must install into jniLibs/arm64-v8a`,
     );
   }
 
@@ -84,36 +83,31 @@ test('the build scripts target Android ARM64 + ARMv7 with the project NDK and 16
   );
   assert.match(
     cargoConfig,
-    /\[target\.armv7-linux-androideabi\][\s\S]*?max-page-size=16384/,
-    'the 32-bit Android target must link with 16 KiB page alignment',
-  );
-  assert.match(
-    cargoConfig,
     /\[target\.aarch64-linux-android\][\s\S]*?max-page-size=16384/,
     'the 64-bit Android target must link with 16 KiB page alignment',
   );
 });
 
-test('the APK workflow builds and verifies both ABIs', () => {
+test('the APK workflow builds and verifies the ARM64 ABI', () => {
   const workflow = fs.readFileSync(
     path.join(appDir, '.github', 'workflows', 'android-apk.yml'),
     'utf8',
   );
   assert.ok(
-    workflow.includes('armv7-linux-androideabi'),
-    'the APK workflow must install the 32-bit Rust target',
+    !workflow.includes('armv7-linux-androideabi'),
+    'the APK workflow must not install the 32-bit Rust target',
   );
   assert.ok(
-    workflow.includes('--split-per-abi'),
-    'the APK workflow must split the APK per ABI instead of shipping one arm64-only package',
+    workflow.includes('--target-platform android-arm64'),
+    'the APK workflow must build the 64-bit ARM target',
   );
   assert.ok(
-    workflow.includes('app-$abi-release.apk') || workflow.includes('app-armeabi-v7a-release.apk'),
-    'the APK workflow must verify the 32-bit APK',
+    workflow.includes('app-$abi-release.apk'),
+    'the APK workflow must verify the packaged APK',
   );
   assert.ok(
-    workflow.includes('fqapp-armv7-'),
-    'the APK workflow must upload a separate 32-bit artifact',
+    workflow.includes('fqapp-arm64-'),
+    'the APK workflow must upload the ARM64 artifact',
   );
 });
 
@@ -152,7 +146,7 @@ test('the APK verifier expects the Rust core library for both ABIs', () => {
     'utf8',
   );
   assert.ok(verifier.includes('lib/arm64-v8a/libfqapi_core.so'));
-  assert.ok(verifier.includes('lib/armeabi-v7a/libfqapi_core.so'));
+  assert.ok(verifier.includes('lib/arm64-v8a/libfqapi_core.so'));
 });
 
 test('APK unsigned classification accepts Gradle output and rejects damaged signatures', () => {
