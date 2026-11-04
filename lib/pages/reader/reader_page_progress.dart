@@ -432,18 +432,4 @@ extension _ReaderPageProgress on _ReaderPageState {
     );
   }
 
-  void _desktopScroll(PointerSignalEvent signal) {
-    if (!_paged ||
-        signal is! PointerScrollEvent ||
-        signal.scrollDelta.dy == 0) {
-      return;
-    }
-    GestureBinding.instance.pointerSignalResolver.register(signal, (_) {
-      final now = DateTime.now();
-      if (now.difference(_desktopWheelAt).inMilliseconds < 180) return;
-      _desktopWheelAt = now;
-      _takeOverListening();
-      unawaited(_turnPage(signal.scrollDelta.dy > 0 ? 1 : -1));
-    });
-  }
 }

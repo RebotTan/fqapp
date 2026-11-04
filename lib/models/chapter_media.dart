@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:html/parser.dart' show parseFragment;
+
 
 import 'backend_resource_url.dart';
 
@@ -35,20 +35,6 @@ class AudioSource {
   final String keyHex;
 }
 
-/// A comic page in reading order. URL-only responses leave dimensions unset.
-class ComicImage {
-  const ComicImage({
-    required this.url,
-    this.width,
-    this.height,
-    this.headers = const {},
-  });
-
-  final String url;
-  final int? width;
-  final int? height;
-  final Map<String, String> headers;
-}
 
 const defaultAudioVoices = [AudioVoice(id: '0', label: '默认音色')];
 
@@ -274,38 +260,6 @@ List<AudioVoice> parseAudioVoices(Map<String, dynamic> payload) {
   ]);
 }
 
-/// The committed backend returns an ordered URL array. Some content fallback
-/// responses carry HTML instead; extract its image sources without rendering
-/// markup. Repeated URLs remain separate pages in the original reading order.
-List<ComicImage> parseComicImages(
-  Map<String, dynamic> payload, {
-  required String baseUrl,
-}) {
-  final objects = _checkedMediaObjects(payload);
-  for (final object in objects) {
-    final images = object['images'];
-    if (images is! List) continue;
-    final pages = <ComicImage>[];
-    for (final value in images) {
-      final url = _mediaUrl(value, baseUrl);
-      if (url != null) pages.add(ComicImage(url: url));
-    }
-    if (pages.isNotEmpty) return List.unmodifiable(pages);
-  }
-  for (final object in objects) {
-    for (final key in ['content', 'images']) {
-      final html = object[key];
-      if (html is! String || !html.toLowerCase().contains('<img')) continue;
-      final pages = <ComicImage>[];
-      for (final element in parseFragment(html).querySelectorAll('img')) {
-        final url = _mediaUrl(element.attributes['src'], baseUrl);
-        if (url != null) pages.add(ComicImage(url: url));
-      }
-      if (pages.isNotEmpty) return List.unmodifiable(pages);
-    }
-  }
-  throw const FormatException('未获取到漫画图片');
-}
 
 /// A web `code=200` envelope can contain an upstream business error. Check
 /// every known `data` wrapper before accepting even an apparently valid URL.

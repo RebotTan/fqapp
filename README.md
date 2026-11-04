@@ -108,6 +108,6 @@ App 里也有入口：「设置 → 关于 → 支持作者」。
 
 ---
 
-**电脑版** [Windows 桌面版](WINDOWS.md) ｜ **开发者** [编译与开发](DEVELOPMENT.md) ｜ [如何反馈](CONTRIBUTING.md) ｜ **许可** [GPL-3.0](LICENSE)，Copyright (C) 2026 ch6vip ｜ **致谢** [LINUX DO](https://linux.do/)
+**开发者** [编译与开发](DEVELOPMENT.md) ｜ [如何反馈](CONTRIBUTING.md) ｜ **许可** [GPL-3.0](LICENSE)，Copyright (C) 2026 ch6vip ｜ **致谢** [LINUX DO](https://linux.do/)
 
 <a href="https://www.star-history.com/?repos=ch6vip%2Ffqapp&type=date&legend=top-left"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ch6vip/fqapp&type=date&theme=dark&legend=top-left" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ch6vip/fqapp&type=date&legend=top-left" /><img alt="Star History" src="https://api.star-history.com/chart?repos=ch6vip/fqapp&type=date&legend=top-left" /></picture></a>

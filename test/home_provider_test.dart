@@ -24,422 +24,6 @@ void main() {
   });
 
   test(
-    'legacy manga search stops on duplicates without a real cursor',
-    () async {
-      final offsets = <int>[];
-      final provider = NotifierProvider<HomeNotifier, HomeState>(
-        () => HomeNotifier(
-          mangaSearchLoader: ({int offset = 0}) async {
-            offsets.add(offset);
-            return [
-              SearchTab(
-                title: '漫画',
-                items: [_item('a', kind: 'manga')],
-              ),
-            ];
-          },
-        ),
-      );
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final notifier = container.read(provider.notifier);
-      await _loadTab(notifier, HomeNotifier.tabs.indexOf('漫画'));
-      await notifier.loadMore();
-      await notifier.loadMore();
-      expect(offsets, [0, 10]);
-      expect(container.read(provider).hasMore, isFalse);
-    },
-  );
-
-  for (final tabIndex in [0, HomeNotifier.tabs.indexOf('漫画')]) {
-    for (final middlePage in ['duplicate', 'empty', 'filtered']) {
-      test(
-        'manga cursor survives a $middlePage page in tab $tabIndex',
-        () async {
-          final offsets = <int>[];
-          final provider = NotifierProvider<HomeNotifier, HomeState>(
-            () => HomeNotifier(
-              homepageLoader:
-                  ({
-                    int tabType = 2,
-                    int offset = 0,
-                    String? sessionId,
-                  }) async => const HomepagePage(
-                    items: [],
-                    nextOffset: null,
-                    sessionId: null,
-                  ),
-              searchLoader: (query, {int page = 1}) async => [],
-              mangaSearchLoader: ({int offset = 0}) async {
-                offsets.add(offset);
-                return [
-                  SearchTab(
-                    title: '漫画',
-                    items: switch (offset) {
-                      0 => [_item('a', kind: 'manga')],
-                      17 => switch (middlePage) {
-                        'duplicate' => [_item('a', kind: 'manga')],
-                        'filtered' => [_item('other', kind: 'book')],
-                        _ => [],
-                      },
-                      _ => [_item('b', kind: 'manga')],
-                    },
-                    hasMore: offset != 23,
-                    nextOffset: offset == 0 ? 17 : 23,
-                  ),
-                ];
-              },
-            ),
-          );
-          final container = ProviderContainer();
-          addTearDown(container.dispose);
-          final notifier = container.read(provider.notifier);
-          await _loadTab(notifier, tabIndex);
-          await notifier.loadMore();
-          expect(container.read(provider).items.map((item) => item.id), ['a']);
-          expect(container.read(provider).hasMore, isTrue);
-          await notifier.loadMore();
-          expect(container.read(provider).items.map((item) => item.id), [
-            'a',
-            'b',
-          ]);
-          await notifier.loadMore();
-          expect(offsets, [0, 17, 23]);
-          expect(container.read(provider).hasMore, isFalse);
-        },
-      );
-    }
-  }
-
-  for (final nextOffset in [null, -1, 0, 17]) {
-    test(
-      'manga stops on an invalid cursor or explicit exhaustion ($nextOffset)',
-      () async {
-        final offsets = <int>[];
-        final provider = NotifierProvider<HomeNotifier, HomeState>(
-          () => HomeNotifier(
-            mangaSearchLoader: ({int offset = 0}) async {
-              offsets.add(offset);
-              return [
-                SearchTab(
-                  title: '漫画',
-                  items: [_item('a', kind: 'manga')],
-                  hasMore: nextOffset != 17,
-                  nextOffset: nextOffset,
-                ),
-              ];
-            },
-          ),
-        );
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
-        final notifier = container.read(provider.notifier);
-        await _loadTab(notifier, HomeNotifier.tabs.indexOf('漫画'));
-        await notifier.loadMore();
-        expect(offsets, [0]);
-        expect(container.read(provider).hasMore, isFalse);
-      },
-    );
-  }
-
-  test('manga continues after an empty first page', () async {
-    final offsets = <int>[];
-    final provider = NotifierProvider<HomeNotifier, HomeState>(
-      () => HomeNotifier(
-        mangaSearchLoader: ({int offset = 0}) async {
-          offsets.add(offset);
-          return [
-            SearchTab(
-              title: '漫画',
-              items: offset == 0 ? [] : [_item('a', kind: 'manga')],
-              hasMore: offset == 0,
-              nextOffset: 17,
-            ),
-          ];
-        },
-      ),
-    );
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final notifier = container.read(provider.notifier);
-    await _loadTab(notifier, HomeNotifier.tabs.indexOf('漫画'));
-    expect(container.read(provider).hasMore, isTrue);
-    await notifier.loadMore();
-    expect(offsets, [0, 17]);
-    expect(container.read(provider).items.map((item) => item.id), ['a']);
-  });
-
-  for (final recommendationAvailable in [true, false]) {
-    test('manju follows search cursors across duplicate and filtered-empty '
-        'pages (recommendation available: $recommendationAvailable)', () async {
-      final offsets = <int>[];
-      final homepageOffsets = <int>[];
-      final provider = NotifierProvider<HomeNotifier, HomeState>(
-        () => HomeNotifier(
-          homepageLoader:
-              ({int tabType = 2, int offset = 0, String? sessionId}) async {
-                expect(tabType, 24);
-                homepageOffsets.add(offset);
-                if (!recommendationAvailable) throw StateError('unavailable');
-                return HomepagePage(
-                  items: [_item('a', kind: 'manju')],
-                  nextOffset: null,
-                  sessionId: null,
-                );
-              },
-          searchLoader: (query, {int page = 1}) async =>
-              throw StateError('wrong search'),
-          manjuSearchLoader: ({int offset = 0}) async {
-            offsets.add(offset);
-            return [
-              SearchTab(
-                title: '短剧',
-                items: switch (offset) {
-                  0 => [_item('a', kind: 'manju')],
-                  17 => [_item('live-action', kind: 'video')],
-                  _ => [_item('b', kind: 'manju')],
-                },
-                hasMore: offset != 23,
-                nextOffset: offset == 0 ? 17 : 23,
-              ),
-            ];
-          },
-        ),
-      );
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final notifier = container.read(provider.notifier);
-      await _loadTab(notifier, HomeNotifier.tabs.indexOf('漫剧'));
-      if (recommendationAvailable) {
-        expect(offsets, isEmpty);
-        await notifier.loadMore();
-      }
-      expect(container.read(provider).hasMore, isTrue);
-      await notifier.loadMore();
-      expect(container.read(provider).items.map((item) => item.id), ['a']);
-      expect(container.read(provider).hasMore, isTrue);
-      await notifier.loadMore();
-      expect(container.read(provider).items.map((item) => item.id), ['a', 'b']);
-      expect(container.read(provider).hasMore, isFalse);
-      await notifier.loadMore();
-      expect(offsets, [0, 17, 23]);
-      expect(homepageOffsets, [0]);
-    });
-  }
-
-  test('manju stops when an empty search page repeats its cursor', () async {
-    final offsets = <int>[];
-    final provider = NotifierProvider<HomeNotifier, HomeState>(
-      () => HomeNotifier(
-        homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
-                const HomepagePage(
-                  items: [],
-                  nextOffset: null,
-                  sessionId: null,
-                ),
-        searchLoader: (query, {int page = 1}) async => [],
-        manjuSearchLoader: ({int offset = 0}) async {
-          offsets.add(offset);
-          return [
-            SearchTab(title: '短剧', items: [], hasMore: true, nextOffset: 0),
-          ];
-        },
-      ),
-    );
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final notifier = container.read(provider.notifier);
-    await _loadTab(notifier, HomeNotifier.tabs.indexOf('漫剧'));
-    await notifier.loadMore();
-    expect(offsets, [0]);
-    expect(container.read(provider).hasMore, isFalse);
-  });
-
-  for (final tabIndex in [0, HomeNotifier.tabs.indexOf('漫画')]) {
-    test(
-      'tab $tabIndex loads and pages actual manga results independently',
-      () async {
-        final requests = <int>[];
-        final provider = NotifierProvider<HomeNotifier, HomeState>(
-          () => HomeNotifier(
-            homepageLoader:
-                ({int tabType = 2, int offset = 0, String? sessionId}) async =>
-                    const HomepagePage(
-                      items: [],
-                      nextOffset: null,
-                      sessionId: null,
-                    ),
-            searchLoader: (query, {int page = 1}) async {
-              expect(query, isNot('漫画'));
-              return [];
-            },
-            mangaSearchLoader: ({int offset = 0}) async {
-              requests.add(offset);
-              return [
-                SearchTab(
-                  title: '漫画',
-                  items: [_item('manga-$offset', kind: 'manga')],
-                ),
-              ];
-            },
-          ),
-        );
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
-        final notifier = container.read(provider.notifier);
-        await _loadTab(notifier, tabIndex);
-        await notifier.loadMore();
-        expect(requests, [0, 10]);
-        expect(container.read(provider).items.map((item) => item.id), [
-          'manga-0',
-          'manga-10',
-        ]);
-      },
-    );
-  }
-
-  for (final tabIndex in [0, 1]) {
-    final tabName = HomeNotifier.tabs[tabIndex];
-    for (final initiallyEmpty in [false, true]) {
-      test(
-        '$tabName follows advancing cursors across duplicate and empty pages '
-        '(initially empty: $initiallyEmpty)',
-        () async {
-          final offsets = <int>[];
-          final sessions = <String?>[];
-          final novelSearchPages = <int>[];
-          final provider = NotifierProvider<HomeNotifier, HomeState>(
-            () => HomeNotifier(
-              homepageLoader:
-                  ({int tabType = 2, int offset = 0, String? sessionId}) async {
-                    // The combined feed reads the manju stream (24) for its
-                    // manju group. Keep it empty here so this test tracks only
-                    // the novel stream's cursor.
-                    if (tabType != 2) {
-                      return const HomepagePage(
-                        items: [],
-                        nextOffset: null,
-                        sessionId: null,
-                      );
-                    }
-                    offsets.add(offset);
-                    sessions.add(sessionId);
-                    return HomepagePage(
-                      items: switch (offset) {
-                        0 when initiallyEmpty => [],
-                        0 || 1 => [_item('a')],
-                        2 => [],
-                        _ => [_item('b')],
-                      },
-                      nextOffset: offset < 3 ? offset + 1 : null,
-                      sessionId: 'session-$offset',
-                    );
-                  },
-              searchLoader: (query, {int page = 1}) async {
-                if (query == '小说') novelSearchPages.add(page);
-                return [];
-              },
-            ),
-          );
-          final container = ProviderContainer();
-          addTearDown(container.dispose);
-          final notifier = container.read(provider.notifier);
-          await _loadTab(notifier, tabIndex);
-          expect(container.read(provider).hasMore, isTrue);
-          for (var page = 1; page <= 2; page++) {
-            await notifier.loadMore();
-            expect(container.read(provider).items.map((item) => item.id), [
-              'a',
-            ]);
-            expect(container.read(provider).hasMore, isTrue);
-            expect(novelSearchPages, isEmpty);
-          }
-          await notifier.loadMore();
-          expect(container.read(provider).items.map((item) => item.id), [
-            'a',
-            'b',
-          ]);
-          expect(offsets, [0, 1, 2, 3]);
-          expect(sessions, [null, 'session-0', 'session-1', 'session-2']);
-
-          await notifier.loadMore();
-          expect(container.read(provider).hasMore, isFalse);
-          await notifier.loadMore();
-          expect(offsets, [0, 1, 2, 3]);
-          expect(novelSearchPages, [1]);
-        },
-      );
-    }
-
-    for (final scenario in const [
-      (requestedOffset: 0, nextOffset: 0, fresh: false),
-      (requestedOffset: 0, nextOffset: -1, fresh: false),
-      (requestedOffset: 1, nextOffset: 1, fresh: false),
-      (requestedOffset: 1, nextOffset: 0, fresh: false),
-      (requestedOffset: 1, nextOffset: 1, fresh: true),
-      (requestedOffset: 1, nextOffset: 0, fresh: true),
-    ]) {
-      test('$tabName falls back after cursor ${scenario.requestedOffset} -> '
-          '${scenario.nextOffset} (fresh items: ${scenario.fresh})', () async {
-        final offsets = <int>[];
-        final novelSearchPages = <int>[];
-        final provider = NotifierProvider<HomeNotifier, HomeState>(
-          () => HomeNotifier(
-            homepageLoader:
-                ({int tabType = 2, int offset = 0, String? sessionId}) async {
-                  // Manju reads its own stream (24); leave it empty so the manju
-                  // group falls back to search and this test keeps tracking the
-                  // novel stream's cursor.
-                  if (tabType != 2) {
-                    return const HomepagePage(
-                      items: [],
-                      nextOffset: null,
-                      sessionId: null,
-                    );
-                  }
-                  offsets.add(offset);
-                  final atInvalidCursor = offset == scenario.requestedOffset;
-                  return HomepagePage(
-                    items: [
-                      _item(atInvalidCursor && scenario.fresh ? 'b' : 'a'),
-                    ],
-                    nextOffset: atInvalidCursor ? scenario.nextOffset : 1,
-                    sessionId: 'session',
-                  );
-                },
-            searchLoader: (query, {int page = 1}) async {
-              if (query != '小说') return [];
-              novelSearchPages.add(page);
-              return [
-                SearchTab(
-                  title: query,
-                  items: page == 1 ? [_item('search-book')] : [],
-                ),
-              ];
-            },
-          ),
-        );
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
-        final notifier = container.read(provider.notifier);
-        await _loadTab(notifier, tabIndex);
-        for (var page = 0; page < 4; page++) {
-          await notifier.loadMore();
-        }
-        expect(container.read(provider).items.map((item) => item.id), [
-          'a',
-          if (scenario.fresh) 'b',
-          'search-book',
-        ]);
-        expect(offsets, [0, if (scenario.requestedOffset > 0) 1]);
-        expect(novelSearchPages, [1, 2]);
-        expect(container.read(provider).hasMore, isFalse);
-      });
-    }
-  }
-
-  test(
     'an initial request can finish after its provider is disposed',
     () async {
       final response = Completer<HomepagePage>();
@@ -768,16 +352,20 @@ void main() {
 
     notifier.selectTab(1); // 小说, request still pending.
     expect(requests[2], hasLength(1));
-    notifier.selectTab(2); // 短剧 supersedes it.
-    expect(requests[8], hasLength(1));
+    notifier.selectTab(2); // 听书 supersedes it.
+    expect(requests[5], hasLength(1));
 
-    requests[8]!.single.complete(
-      HomepagePage(items: [_item('video')], nextOffset: null, sessionId: null),
+    requests[5]!.single.complete(
+      HomepagePage(
+        items: [_item('audio', kind: 'audio')],
+        nextOffset: null,
+        sessionId: null,
+      ),
     );
     await _flushMicrotasks();
     expect(container.read(provider).tabIndex, 2);
-    expect(container.read(provider).items.single.id, 'video');
-    expect(container.read(provider).items.single.kind, 'video');
+    expect(container.read(provider).items.single.id, 'audio');
+    expect(container.read(provider).items.single.kind, 'audio');
 
     // Completing the older novel request must not change the selected feed.
     requests[2]!.single.complete(
@@ -789,7 +377,7 @@ void main() {
     );
     await _flushMicrotasks();
     expect(container.read(provider).tabIndex, 2);
-    expect(container.read(provider).items.single.id, 'video');
+    expect(container.read(provider).items.single.id, 'audio');
 
     // The canceled novel request must not make an empty cache look loaded.
     notifier.selectTab(1);
@@ -806,151 +394,8 @@ void main() {
     expect(container.read(provider).items.single.kind, 'book');
   });
 
-  test('the home feed keeps the upstream corner badge', () async {
-    // The 漫剧 tab is where the upstream ships badges, and it is also the tab
-    // that rewrites every item's kind. The rewrite used to rebuild MediaItem by
-    // hand and drop the badge, so nothing ever rendered on the home page.
-    final provider = NotifierProvider<HomeNotifier, HomeState>(
-      () => HomeNotifier(
-        homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
-                HomepagePage(
-                  items: [_item('manju-1', kind: 'manju', tag: _newTag)],
-                  nextOffset: null,
-                  sessionId: null,
-                ),
-        searchLoader: (query, {int page = 1}) async => [],
-        manjuSearchLoader: ({int offset = 0}) async => [],
-      ),
-    );
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final notifier = container.read(provider.notifier);
-    await _loadTab(notifier, HomeNotifier.tabs.indexOf('漫剧'));
-
-    final items = container.read(provider).items;
-    expect(items, isNotEmpty);
-    final tag = items.first.tag;
-    expect(tag, isNotNull, reason: 'the kind rewrite must not drop the badge');
-    expect(tag!.text, '上新');
-    expect(tag.lightColors, ['#00B876', '#15D791']);
-    expect(tag.darkColors, ['#009962', '#11B279']);
-  });
-
-  test(
-    'the combined feed takes manju from its own stream, not search',
-    () async {
-      final manjuStreamOffsets = <int>[];
-      final manjuSearchOffsets = <int>[];
-      final provider = NotifierProvider<HomeNotifier, HomeState>(
-        () => HomeNotifier(
-          homepageLoader:
-              ({int tabType = 2, int offset = 0, String? sessionId}) async {
-                if (tabType != 24) {
-                  return const HomepagePage(
-                    items: [],
-                    nextOffset: null,
-                    sessionId: null,
-                  );
-                }
-                manjuStreamOffsets.add(offset);
-                return HomepagePage(
-                  items: [_item('manju-stream', kind: 'manju', tag: _newTag)],
-                  nextOffset: null,
-                  sessionId: null,
-                );
-              },
-          searchLoader: (query, {int page = 1}) async => [],
-          mangaSearchLoader: ({int offset = 0}) async => [],
-          manjuSearchLoader: ({int offset = 0}) async {
-            manjuSearchOffsets.add(offset);
-            return [
-              SearchTab(
-                title: '漫剧',
-                items: [_item('manju-search-$offset', kind: 'manju')],
-                hasMore: offset == 0,
-                nextOffset: 17,
-              ),
-            ];
-          },
-        ),
-      );
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final notifier = container.read(provider.notifier);
-      await _loadTab(notifier, 0);
-
-      // The stream serves the first screen; search is not consulted for it.
-      expect(manjuStreamOffsets, [0]);
-      expect(manjuSearchOffsets, isEmpty);
-      expect(
-        container.read(provider).items.map((i) => i.id),
-        contains('manju-stream'),
-      );
-      // The badge from the stream survives into the combined feed.
-      final streamed = container
-          .read(provider)
-          .items
-          .firstWhere((i) => i.id == 'manju-stream');
-      expect(streamed.tag?.text, '上新');
-
-      // The 24 stream has no cursor, so paging continues through search.
-      await notifier.loadMore();
-      expect(manjuSearchOffsets, [0]);
-      expect(
-        container.read(provider).items.map((i) => i.id),
-        contains('manju-search-0'),
-      );
-    },
-  );
-
-  test(
-    'the combined feed falls back to manju search when the stream fails',
-    () async {
-      final manjuSearchOffsets = <int>[];
-      final provider = NotifierProvider<HomeNotifier, HomeState>(
-        () => HomeNotifier(
-          homepageLoader:
-              ({int tabType = 2, int offset = 0, String? sessionId}) async {
-                if (tabType == 24) throw StateError('stream unavailable');
-                return const HomepagePage(
-                  items: [],
-                  nextOffset: null,
-                  sessionId: null,
-                );
-              },
-          searchLoader: (query, {int page = 1}) async => [],
-          mangaSearchLoader: ({int offset = 0}) async => [],
-          manjuSearchLoader: ({int offset = 0}) async {
-            manjuSearchOffsets.add(offset);
-            return [
-              SearchTab(
-                title: '漫剧',
-                items: [_item('manju-search', kind: 'manju')],
-                hasMore: false,
-                nextOffset: null,
-              ),
-            ];
-          },
-        ),
-      );
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final notifier = container.read(provider.notifier);
-      await _loadTab(notifier, 0);
-
-      expect(manjuSearchOffsets, [0]);
-      expect(
-        container.read(provider).items.map((i) => i.id),
-        contains('manju-search'),
-      );
-    },
-  );
 
   group('server tab strip drives the tab identity', () {
-    // 服务端 tab_item 有 11 项，与本地 7 项兜底表既不同长也不同序。按下标
-    // 到本地表取名会把「经典」（服务端下标 2）解析成「短剧」，去拉
-    // tab_type=8 —— 点经典看到短剧。
     const serverTabs = <HomeTabItem>[
       HomeTabItem(type: 2, title: '推荐'),
       HomeTabItem(type: 25, title: '小说'),
@@ -982,8 +427,6 @@ void main() {
                   );
                 },
             searchLoader: (query, {int page = 1}) async => [],
-            mangaSearchLoader: ({int offset = 0}) async => [],
-            manjuSearchLoader: ({int offset = 0}) async => [],
           ),
         );
         final container = ProviderContainer();
@@ -1020,8 +463,6 @@ void main() {
                       ],
                     ),
             searchLoader: (query, {int page = 1}) async => [],
-            mangaSearchLoader: ({int offset = 0}) async => [],
-            manjuSearchLoader: ({int offset = 0}) async => [],
           ),
         );
         final container = ProviderContainer();
@@ -1047,55 +488,7 @@ void main() {
         expect(notifier.identityOf(2), (name: '漫画', kind: 'manga', tabType: 9));
       },
     );
-
-    test('dramaProvider keeps reading the 本地表 even when tabs arrive', () async {
-      // 短剧页的频道条是本地表下标拼的（dramaChannels）。它的 state.tabs 同样
-      // 会被服务端那 11 项填满，若跟着服务端下标解析，它的「短剧」（本地 2）
-      // 就会变成服务端的「经典」。
-      final requested = <int>[];
-      final provider = NotifierProvider<HomeNotifier, HomeState>(
-        () => HomeNotifier(
-          usesLocalTabs: true,
-          initialTabIndex: HomeNotifier.tabs.indexOf('短剧'),
-          homepageLoader:
-              ({int tabType = 2, int offset = 0, String? sessionId}) async {
-                requested.add(tabType);
-                return HomepagePage(
-                  items: [_item('book-$tabType')],
-                  nextOffset: null,
-                  sessionId: null,
-                  tabs: serverTabs,
-                );
-              },
-          searchLoader: (query, {int page = 1}) async => [],
-          mangaSearchLoader: ({int offset = 0}) async => [],
-          manjuSearchLoader: ({int offset = 0}) async => [],
-        ),
-      );
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final notifier = container.read(provider.notifier);
-
-      await notifier.load();
-
-      // 本地表「短剧」= tab_type 8，不是服务端下标 2 的「经典」= 11。
-      expect(requested, [8]);
-      expect(notifier.identityOf(HomeNotifier.tabs.indexOf('短剧')), (
-        name: '短剧',
-        kind: 'video',
-        tabType: 8,
-      ));
-    });
   });
-}
-
-Future<void> _loadTab(HomeNotifier notifier, int tabIndex) async {
-  if (tabIndex == 0) {
-    await notifier.load();
-  } else {
-    notifier.selectTab(tabIndex);
-    await _flushMicrotasks();
-  }
 }
 
 Future<void> _flushMicrotasks() async {
@@ -1112,11 +505,4 @@ MediaItem _item(String id, {String kind = 'book', MediaTag? tag}) => MediaItem(
   ep: '',
   kind: kind,
   tag: tag,
-);
-
-/// The upstream badge, as the home feed ships it.
-const _newTag = MediaTag(
-  text: '上新',
-  lightColors: ['#00B876', '#15D791'],
-  darkColors: ['#009962', '#11B279'],
 );

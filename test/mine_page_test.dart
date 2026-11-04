@@ -102,9 +102,7 @@ void main() {
     expect(route.builder(context), isA<SettingsPage>());
   });
 
-  testWidgets('offline cache offers the novel and drama caches', (
-    tester,
-  ) async {
+  testWidgets('offline cache offers the novel cache', (tester) async {
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(const MaterialApp(home: MinePage()));
     await tester.pumpAndSettle();
@@ -112,7 +110,7 @@ void main() {
     await tester.tap(find.text('离线缓存'));
     await tester.pumpAndSettle();
     expect(find.text('小说离线缓存'), findsOneWidget);
-    expect(find.text('短剧离线缓存'), findsOneWidget);
+    expect(find.text('短剧离线缓存'), findsNothing);
   });
 
   testWidgets('mine list leaves room for the floating navigation bar', (

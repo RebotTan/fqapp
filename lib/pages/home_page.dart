@@ -10,7 +10,6 @@ import '../services/api_client.dart';
 import '../services/app_log.dart';
 import '../services/book_open_preferences.dart';
 import '../services/chapter_cache_store.dart';
-import '../services/desktop_platform.dart';
 import '../services/home_continue_preferences.dart';
 import '../services/home_page_affinity.dart';
 import '../services/library_store.dart';
@@ -255,7 +254,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         // 窗口再宽只把卡片放大，不会往格子里塞更多小封面。
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: isWindowsDesktop || MediaQuery.sizeOf(context).width >= 840 ? double.infinity : 840,
+            maxWidth: MediaQuery.sizeOf(context).width >= 840 ? double.infinity : 840,
           ),
           child: SafeArea(
             bottom: false,

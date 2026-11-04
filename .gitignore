@@ -84,3 +84,7 @@ _sessionzip/
 
 # 代理执行入口含本地资料路径与内部判据编号，与 docs/ 同样只保留在本地。
 /AGENTS.md
+
+# 本地语义索引（zg/codegraph 工具缓存）
+.codegraph/
+.zvec-grep/

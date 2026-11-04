@@ -666,9 +666,8 @@ jobs:
       # AGENTS.md caps files at 500 lines and functions at 80. The codebase is
       # already over that in many places, so this gate freezes today's debt
       # instead of pretending it is clean: a listed file may shrink but not grow.
-      # It lives here rather than in windows.yml: it only reads source, and the
-      # Windows job additionally downloads ffmpeg over the network, so a format
-      # gate should not be blocked behind that.
+      # It runs on the same job as the rest of the gate: it only reads source,
+      # so it fails fast before the long compile and test steps.
       - name: Check size budget
         run: bash scripts/check_line_budget.sh
 

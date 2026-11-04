@@ -10,7 +10,7 @@ import 'package:fqapp/services/api_client.dart';
 import 'package:fqapp/services/home_feed_cache.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
-MediaItem _item(String id, {String kind = 'video'}) => MediaItem(
+MediaItem _item(String id, {String kind = 'book'}) => MediaItem(
   id: id,
   title: '剧 $id',
   cover: 'https://example.com/$id.jpg',

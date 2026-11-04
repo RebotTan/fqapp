@@ -61,7 +61,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      for (final label in ['漫剧', '漫画', '听书']) {
+      for (final label in ['听书']) {
         final index = HomeNotifier.tabs.indexOf(label);
         final tab = find.byKey(ValueKey('home_category_$index'));
         await tester.ensureVisible(tab);

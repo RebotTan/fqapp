@@ -1,5 +1,3 @@
-import '../services/desktop_platform.dart';
-import '../widgets/desktop_settings_body.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -8,18 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_theme.dart';
 import '../services/audio_preferences.dart';
-import '../services/native_player.dart';
-import '../services/player_preferences.dart';
-import '../services/player_layout_preferences.dart';
 import '../services/book_open_preferences.dart';
-import '../services/drama_mute_preferences.dart';
 import '../services/library_store.dart';
 import '../widgets/home/home_design.dart';
 import '../widgets/settings/settings_widgets.dart';
 import 'about_page.dart';
 import 'api_service_page.dart';
 import 'cached_books_page.dart';
-import 'cached_dramas_page.dart';
 import 'library_backup_page.dart';
 import 'settings_category_page.dart';
 import 'system_tts_settings_page.dart';
@@ -38,17 +31,15 @@ class SettingsPage extends StatelessWidget {
       SettingsCategory(
         icon: LucideIcons.palette,
         title: '外观',
-        subtitle: '主题模式、OLED 纯黑、播放页布局',
+        subtitle: '主题模式、OLED 纯黑',
         // 用 builder 而不是固定 items：切到深色 / 切回浅色后，分类页重建
         // 时会重新判定，OLED 行不必退出重进就能出现或消失。
-        // 播放页布局只在手机端有效（Windows 由 DesktopVideoChrome 承担）。
         itemsBuilder: (context) => [
           _themeModeItem(),
           if (isDarkAppearance(
             systemBrightness: MediaQuery.platformBrightnessOf(context),
           ))
             _oledModeItem(),
-          if (!isWindowsDesktop) _playerLayoutItem(),
         ],
       ),
       SettingsCategory(
@@ -75,7 +66,7 @@ class SettingsPage extends StatelessWidget {
         subtitle: '后台播放、通知栏控制与系统朗读',
         items: [
           _backgroundAudioItem(),
-          if (!isWindowsDesktop) _audioRateEngineItem(),
+          _audioRateEngineItem(),
           SettingsItem(
             icon: LucideIcons.mic,
             title: '系统朗读',
@@ -85,16 +76,6 @@ class SettingsPage extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const SystemTtsSettingsPage()),
             ),
           ),
-        ],
-      ),
-      SettingsCategory(
-        icon: LucideIcons.film,
-        title: '短剧',
-        subtitle: '播放',
-        items: [
-          _muteWhenColdStartItem(),
-          if (!isWindowsDesktop) _floatingWindowItem(),
-          if (!isWindowsDesktop) _videoDecoderItem(),
         ],
       ),
       SettingsCategory(
@@ -120,15 +101,6 @@ class SettingsPage extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const CachedBooksPage()),
             ),
           ),
-          SettingsItem(
-            icon: LucideIcons.clapperboard,
-            title: '短剧离线缓存',
-            subtitle: '短剧下载、离线播放和清理缓存',
-            onTap: (context, setState) => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CachedDramasPage()),
-            ),
-          ),
           _clearHistItem(),
         ],
       ),
@@ -150,10 +122,7 @@ class SettingsPage extends StatelessWidget {
 
     return SettingsScaffold(
       title: '设置',
-      body: isWindowsDesktop
-          ? DesktopSettingsBody(categories: categories)
-          : ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      body: ListView(
               children: [
                 SettingsGroupCard(
                   children: [
@@ -331,126 +300,10 @@ class SettingsPage extends StatelessWidget {
     }
   }
 
-  /// 播放页布局：沉浸式 / 横屏片源自动分屏 / 始终分屏。
-  ///
-  /// 只影响短剧播放页，Windows 隐藏（桌面已有 304dp 停靠选集面板）。
-  SettingsItem _playerLayoutItem() => SettingsItem(
-    icon: LucideIcons.columns_2,
-    title: '播放页布局',
-    subtitle: '短剧可分屏显示选集和评论，横屏时左右分栏',
-    trailingBuilder: (context) => ValueListenableBuilder<PlayerLayoutMode>(
-      valueListenable: PlayerLayoutPreferences.mode,
-      builder: (context, value, _) {
-        final palette = HomePalette.of(context);
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              value.shortLabel,
-              style: TextStyle(fontSize: 13, color: palette.muted),
-            ),
-            const SizedBox(width: 4),
-            Icon(LucideIcons.chevron_right, size: 18, color: palette.muted),
-          ],
-        );
-      },
-    ),
-    onTap: (context, setState) => _showPlayerLayoutDialog(context),
-  );
-
-  Future<void> _showPlayerLayoutDialog(BuildContext context) async {
-    final current = PlayerLayoutPreferences.mode.value;
-    final selected = await showDialog<PlayerLayoutMode>(
-      context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: const Text('播放页布局'),
-        children: [
-          RadioGroup<PlayerLayoutMode>(
-            groupValue: current,
-            onChanged: (value) {
-              if (value != null) Navigator.pop(dialogContext, value);
-            },
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final mode in PlayerLayoutMode.values)
-                  RadioListTile<PlayerLayoutMode>(
-                    value: mode,
-                    title: Text(mode.label),
-                    subtitle: Text(mode.description),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (selected == null || !context.mounted) return;
-    await _setPlayerLayout(context, selected);
-  }
-
-  Future<void> _setPlayerLayout(
-    BuildContext context,
-    PlayerLayoutMode value,
-  ) async {
-    final previous = PlayerLayoutPreferences.mode.value;
-    if (previous == value) return;
-    PlayerLayoutPreferences.mode.value = value;
-    try {
-      if (!await PlayerLayoutPreferences.save(value)) {
-        throw StateError('Player layout preference was not saved');
-      }
-    } catch (_) {
-      // 落盘失败就退回原选择，避免界面显示与实际不一致。
-      PlayerLayoutPreferences.mode.value = previous;
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('未能保存播放页布局，已恢复原设置')));
-      }
-    }
-  }
 
   // ── 阅读 ──────────────────────────────────────────────────────────────
 
   /// issue #19 第 3 条：点书跳过详情页，直接按上次进度进阅读器（小说/漫画）。
-  /// 切后台悬浮窗播放（#24，默认关）：开启且已授予悬浮窗权限时，切到
-  /// 后台或锁屏用悬浮小窗继续播；关闭则切后台暂停（现有行为）。
-  /// 开启时若无权限，先打开系统设置让用户授予，授予后回来再点一次。
-  SettingsItem _floatingWindowItem() => SettingsItem(
-    icon: LucideIcons.video,
-    title: '切后台悬浮窗播放',
-    subtitle: '切到后台或锁屏时用悬浮小窗继续播放，需要悬浮窗权限',
-    trailingBuilder: (context) => ValueListenableBuilder<bool>(
-      valueListenable: PlayerPreferences.floatingWindow,
-      builder: (context, value, _) => SettingsSwitch(
-        value: value,
-        semanticLabel: '切后台悬浮窗播放',
-        onChanged: (enabled) => unawaited(_setFloatingWindow(context, enabled)),
-      ),
-    ),
-    onTap: (context, setState) {
-      final current = PlayerPreferences.floatingWindow.value;
-      unawaited(_setFloatingWindow(context, !current));
-    },
-  );
-
-  Future<void> _setFloatingWindow(BuildContext context, bool enabled) async {
-    if (!enabled) {
-      await PlayerPreferences.setFloatingWindow(false);
-      return;
-    }
-    if (await NativePlayer.canDrawOverlays()) {
-      await PlayerPreferences.setFloatingWindow(true);
-      return;
-    }
-    await NativePlayer.requestOverlayPermission();
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请在系统设置中允许“显示在其他应用的上层”，然后回来再开启')),
-      );
-    }
-  }
 
   /// 默认关＝现有行为（先进详情页）。听书/短剧与加载失败时仍停留在详情页。
   ///
@@ -583,103 +436,6 @@ class SettingsPage extends StatelessWidget {
     refresh(() {});
   }
 
-  // ── 短剧 ──────────────────────────────────────────────────────────────
-
-  /// 官方设置项「开启应用时默认静音」（`GlobalMuteConfig` 标题，持久层
-  /// `open_mute_when_cold_start`，默认 false＝有声起播）。
-  SettingsItem _muteWhenColdStartItem() => SettingsItem(
-    icon: LucideIcons.volume_x,
-    title: '开启应用时默认静音',
-    subtitle: '进入短剧时静音播放，可在播放页取消',
-    // Switch 走 ValueListenableBuilder，翻转后无需依赖页面的 setState。
-    trailingBuilder: (context) => ValueListenableBuilder<bool>(
-      valueListenable: DramaMutePreferences.instance.muteWhenColdStart,
-      builder: (context, value, _) => SettingsSwitch(
-        value: value,
-        semanticLabel: '开启应用时默认静音',
-        onChanged: (v) => unawaited(DramaMutePreferences.instance.set(v)),
-      ),
-    ),
-    onTap: (context, setState) {
-      final current = DramaMutePreferences.instance.muteWhenColdStart.value;
-      unawaited(DramaMutePreferences.instance.set(!current));
-    },
-  );
-
-  /// 视频解码器（issue #92）：硬解异常的机型可以手动切软解。
-  ///
-  /// 只有**新起的播放器**会采用新设置——ExoPlayer 的 renderer 在 build 时
-  /// 定型，所以行内说明写明需重新进入播放页。
-  SettingsItem _videoDecoderItem() => SettingsItem(
-    icon: LucideIcons.monitor_play,
-    title: '视频解码器',
-    subtitle: '画面异常（黑屏、卡住、绿屏）时改用软解，重新进入播放页生效',
-    trailingBuilder: (context) => FutureBuilder<VideoDecoderPreference>(
-      future: PlayerPreferences.loadVideoDecoder(),
-      builder: (context, snapshot) {
-        final palette = HomePalette.of(context);
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              (snapshot.data ?? VideoDecoderPreference.automatic).label,
-              style: TextStyle(fontSize: 13, color: palette.muted),
-            ),
-            const SizedBox(width: 4),
-            Icon(LucideIcons.chevron_right, size: 18, color: palette.muted),
-          ],
-        );
-      },
-    ),
-    onTap: (context, setState) => _showVideoDecoderDialog(context, setState),
-  );
-
-  Future<void> _showVideoDecoderDialog(
-    BuildContext context,
-    StateSetter refresh,
-  ) async {
-    final current = await PlayerPreferences.loadVideoDecoder();
-    if (!context.mounted) return;
-    final selected = await showDialog<VideoDecoderPreference>(
-      context: context,
-      builder: (c) => SimpleDialog(
-        title: const Text('视频解码器'),
-        children: [
-          RadioGroup<VideoDecoderPreference>(
-            groupValue: current,
-            onChanged: (v) {
-              if (v != null) Navigator.pop(c, v);
-            },
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final value in VideoDecoderPreference.values)
-                  RadioListTile<VideoDecoderPreference>(
-                    value: value,
-                    title: Text(value.label),
-                    subtitle: value == VideoDecoderPreference.software
-                        ? const Text('更耗电，但能绕开部分芯片的硬解缺陷')
-                        : null,
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (selected == null || !context.mounted) return;
-    try {
-      await DecoderPreferenceCache.set(selected);
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('解码器设置未能保存')));
-      }
-      return;
-    }
-    refresh(() {});
-  }
 
   // ── 数据 ──────────────────────────────────────────────────────────────
 
