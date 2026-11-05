@@ -250,6 +250,7 @@ class _DetailPageState extends State<DetailPage> {
         _detail = null;
         _bookDetail = null;
         _comments = const BookCommentPage();
+        _commentsLoadingMore = false;
         _allChapters = const [];
         _opening = false;
         _resumeIndex = null;
@@ -351,6 +352,7 @@ class _DetailPageState extends State<DetailPage> {
     if (extras.value case final DetailExtras loaded) {
       setState(() {
         _comments = loaded.comments;
+        _commentsLoadingMore = false;
         _reviewsError = null;
       });
     } else {
@@ -413,10 +415,18 @@ class _DetailPageState extends State<DetailPage> {
   Future<void> _loadMoreComments() async {
     final loader = _commentsLoader();
     if (loader == null || _commentsLoadingMore || !_comments.hasMore) return;
+    final generation = _loadGeneration;
+    final page = _comments;
+    final offset = page.nextOffset;
+    bool isCurrent() =>
+        mounted &&
+        generation == _loadGeneration &&
+        identical(page, _comments) &&
+        offset == _comments.nextOffset;
     setState(() => _commentsLoadingMore = true);
     try {
-      final next = await loader(_comments.nextOffset);
-      if (!mounted) return;
+      final next = await loader(offset);
+      if (!isCurrent()) return;
       setState(() {
         _comments = BookCommentPage(
           comments: [..._comments.comments, ...next.comments],
@@ -431,7 +441,7 @@ class _DetailPageState extends State<DetailPage> {
         _commentsLoadingMore = false;
       });
     } on Exception {
-      if (mounted) setState(() => _commentsLoadingMore = false);
+      if (isCurrent()) setState(() => _commentsLoadingMore = false);
     }
   }
 

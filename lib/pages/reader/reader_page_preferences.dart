@@ -94,6 +94,7 @@ extension _ReaderPagePreferences on _ReaderPageState {
             (_routeCurrent || _ideasSheetOpen) &&
             widget.chapters.isNotEmpty,
         showStatusBar: _preferences.showSystemStatusBar,
+        showNavigationBar: _preferences.showSystemNavigationBar,
       ),
     );
   }
@@ -113,6 +114,7 @@ extension _ReaderPagePreferences on _ReaderPageState {
         _dayTheme = preferences.themePreset;
       }
     });
+    if (_controlsVisible) _loadReaderMenuData();
     _syncSystemBars();
     _syncVolumeKeyEnabled();
     await _loadFont(preferences.fontPath);
@@ -219,7 +221,12 @@ extension _ReaderPagePreferences on _ReaderPageState {
     if (!_controlsVisible) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
     }
-    _setState(() => _controlsVisible = !_controlsVisible);
+    _setControlsVisible(!_controlsVisible);
+    if (_controlsVisible) _loadReaderMenuData();
+  }
+
+  void _setControlsVisible(bool visible) {
+    _setState(() => _controlsVisibility.value = visible);
     _syncVolumeKeyEnabled();
   }
 
@@ -297,6 +304,7 @@ extension _ReaderPagePreferences on _ReaderPageState {
       einkOverride: einkModeNotifier.value,
       oledOverride: oledActive(),
       onTextReplacement: _showTextReplacement,
+      onListeningSource: () => unawaited(_openListening()),
     );
     // 墨水屏：排版面板关闭后刷一次，清掉面板残影。
     _maybeEinkRefresh();
@@ -333,7 +341,7 @@ extension _ReaderPagePreferences on _ReaderPageState {
   }
 
   Future<void> _showDirectory() async {
-    _setState(() => _controlsVisible = false);
+    _setControlsVisible(false);
     Set<String> cachedIds = {};
     try {
       cachedIds = await _diskCache.cachedChapterIds(widget.bookId);
@@ -363,7 +371,7 @@ extension _ReaderPagePreferences on _ReaderPageState {
   }
 
   Future<void> _showCache() {
-    _setState(() => _controlsVisible = false);
+    _setControlsVisible(false);
     final preset = _effectivePreset;
     return showModalBottomSheet<void>(
       context: context,

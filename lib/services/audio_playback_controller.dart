@@ -59,8 +59,6 @@ class _AudioPlaybackController extends ChangeNotifier
   bool _autoAdvance = true;
   String? _error;
   String _toneId = '0';
-  String _excerpt = '';
-  int _excerptGeneration = 0;
   double _rate = 1;
   // Position ticks (~5Hz) rebuild progress/read-along listeners, not the page.
   final ValueNotifier<Duration> _position = ValueNotifier(Duration.zero);
@@ -68,6 +66,8 @@ class _AudioPlaybackController extends ChangeNotifier
   Duration _duration = Duration.zero;
   List<AudioVoice> _voices = const [_defaultVoice];
   AudioExtras _extras = const AudioExtras();
+  // A selected version's family is known before its decorations arrive.
+  bool? _versionHasFixedTone;
   SubtitleTrack _subtitles = SubtitleTrack.empty;
 
   /// 当前字幕轨是否由本地估算生成（服务端没有文稿时的兜底）。
@@ -504,7 +504,6 @@ class _AudioPlaybackController extends ChangeNotifier
     });
     _publishReadAlong();
     _publishMoreState();
-    unawaited(_loadExcerpt(_chapters[index].itemId));
     NativePlayer? candidate;
     try {
       await _settingsReady;
@@ -586,9 +585,10 @@ class _AudioPlaybackController extends ChangeNotifier
       Duration? anchorPosition;
       if (paragraph != null && paragraph.ordinal >= 0) {
         try {
-          final track = await _loadTimePoints(itemId, source.toneId).timeout(
-            const Duration(seconds: 8),
-          );
+          final track = await _loadTimePoints(
+            itemId,
+            source.toneId,
+          ).timeout(const Duration(seconds: 8));
           if (!_current(generation)) return;
           _timeTrack = track;
           _timeTrackReady = true;
@@ -918,9 +918,7 @@ class _AudioPlaybackController extends ChangeNotifier
   static Duration? _estimatedFromFraction(double? fraction, Duration duration) {
     if (fraction == null || !fraction.isFinite) return null;
     if (duration <= Duration.zero) return null;
-    final clamped = fraction <= 0
-        ? 0.0
-        : (fraction >= 1 ? 1.0 : fraction);
+    final clamped = fraction <= 0 ? 0.0 : (fraction >= 1 ? 1.0 : fraction);
     if (clamped <= 0) return null;
     return _boundedPosition(
       Duration(milliseconds: (duration.inMilliseconds * clamped).round()),
@@ -1215,7 +1213,7 @@ class _AudioPlaybackController extends ChangeNotifier
   /// TTS plays on the ebook's chapter IDs, even when the panel was opened
   /// from a fixed recording. Never send its tone to the recording's chapters.
   String? get _ttsBookId {
-    if (!_extras.tones.hasFixedTone) return _bookId;
+    if (!_hasFixedTone) return _bookId;
     final id = _extras.tones.relatedNovel?.id;
     return id != null && id.isNotEmpty && id != _bookId ? id : null;
   }
@@ -1239,39 +1237,18 @@ class _AudioPlaybackController extends ChangeNotifier
 
   List<AudioTone> get _narratorTones => _extras.tones.narratorTones;
 
+  bool get _hasFixedTone => _versionHasFixedTone ?? _extras.tones.hasFixedTone;
+
   /// Current family, derived from the selected tone so the voice card always
   /// describe what is actually playing: `tts` (智能朗读) or `narrator` (真人讲书).
   ///
   /// A fixed recording starts on its narrator. Selecting intelligent reading
   /// opens the associated novel instead of relabeling the current recording.
   String get _mode =>
-      _extras.tones.hasFixedTone ||
-          _narratorTones.any((tone) => tone.id == _toneId)
+      _hasFixedTone || _narratorTones.any((tone) => tone.id == _toneId)
       ? 'narrator'
       : 'tts';
 
-  Future<void> _loadExcerpt(String itemId) async {
-    final generation = ++_excerptGeneration;
-    String? text;
-    if (request.excerptLoader != null) {
-      try {
-        text = await request.excerptLoader!(itemId);
-      } catch (_) {
-        text = null;
-      }
-    } else if (!_offline) {
-      try {
-        final summary = await ApiClient.instance.chapterSummaries(_bookId, [
-          itemId,
-        ]);
-        text = summary.forItem(itemId);
-      } catch (_) {
-        text = null;
-      }
-    }
-    if (_closed || generation != _excerptGeneration) return;
-    _update(() => _excerpt = text?.trim() ?? '');
-  }
 
   bool get _offline =>
       request.sourceLoader != null ||
@@ -1343,6 +1320,9 @@ class _AudioPlaybackController extends ChangeNotifier
       return;
     }
     var generation = _generation;
+    final targetHasFixedTone = _narratorTones.any(
+      (tone) => tone.id == targetId,
+    );
     _update(() => _switchingVersion = true);
     try {
       final chapters = await (request.directoryLoader ?? _defaultDirectory)(
@@ -1366,8 +1346,8 @@ class _AudioPlaybackController extends ChangeNotifier
         _chapters = List<Chapter>.unmodifiable(chapters);
         _index = start;
         _toneId = toneId;
+        _versionHasFixedTone = targetHasFixedTone;
         _extras = const AudioExtras();
-        _excerpt = '';
         _error = null;
         _position.value = Duration.zero;
         _duration = Duration.zero;

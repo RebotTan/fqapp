@@ -8,8 +8,8 @@ import 'reader_settings_state.dart';
 import 'reader_typography_settings.dart';
 import 'reader_settings_widgets.dart';
 
-/// 更多设置的结果：正文替换需要先关掉两层面板再进页面。
-enum ReaderMoreSettingsResult { textReplacement }
+/// Actions that close both settings sheets before opening their destination.
+enum ReaderMoreSettingsResult { textReplacement, listeningSource }
 
 /// 打开「更多设置」。
 ///
@@ -22,6 +22,7 @@ Future<ReaderMoreSettingsResult?> showReaderMoreSettings({
   required bool einkOverride,
   required bool oledOverride,
   required bool backgroundLocked,
+  bool showListeningSource = false,
 }) {
   return showModalBottomSheet<ReaderMoreSettingsResult>(
     context: context,
@@ -38,6 +39,7 @@ Future<ReaderMoreSettingsResult?> showReaderMoreSettings({
       einkOverride: einkOverride,
       oledOverride: oledOverride,
       backgroundLocked: backgroundLocked,
+      showListeningSource: showListeningSource,
     ),
   );
 }
@@ -50,6 +52,7 @@ class ReaderMoreSettingsSheet extends StatefulWidget {
     this.einkOverride = false,
     this.oledOverride = false,
     this.backgroundLocked = false,
+    this.showListeningSource = false,
   });
 
   final ReaderPreferences initialValue;
@@ -59,6 +62,7 @@ class ReaderMoreSettingsSheet extends StatefulWidget {
   final bool einkOverride;
   final bool oledOverride;
   final bool backgroundLocked;
+  final bool showListeningSource;
 
   @override
   State<ReaderMoreSettingsSheet> createState() =>
@@ -156,11 +160,26 @@ class _ReaderMoreSettingsSheetState
               _apply((current) => current.copyWith(showSystemStatusBar: on)),
         ),
         ReaderSettingsSwitchRow(
+          label: '底部导航栏',
+          value: value.showSystemNavigationBar,
+          onChanged: (on) => _apply(
+            (current) => current.copyWith(showSystemNavigationBar: on),
+          ),
+        ),
+        ReaderSettingsSwitchRow(
           label: '段评气泡',
           value: value.showParagraphBubbles,
           onChanged: (on) =>
               _apply((current) => current.copyWith(showParagraphBubbles: on)),
         ),
+        ReaderSettingsSwitchRow(
+          key: const ValueKey('reader-dialogue-highlight'),
+          label: '正文对话高亮',
+          value: value.dialogueHighlight,
+          onChanged: (on) =>
+              _apply((current) => current.copyWith(dialogueHighlight: on)),
+        ),
+        if (value.dialogueHighlight) _dialogueStyleRow(),
         ReaderSettingsSwitchRow(
           label: '屏幕常亮',
           value: value.keepScreenOn,
@@ -182,10 +201,39 @@ class _ReaderMoreSettingsSheetState
     );
   }
 
+  Widget _dialogueStyleRow() => ReaderSettingsRow(
+    label: '对话样式',
+    child: ReaderSettingsChipRow(
+      children: [
+        for (final style in ReaderDialogueHighlightStyle.values)
+          ReaderSettingsChip(
+            key: ValueKey('reader-dialogue-style-${style.name}'),
+            label: switch (style) {
+              ReaderDialogueHighlightStyle.automatic => '自动',
+              ReaderDialogueHighlightStyle.background => '背景',
+              ReaderDialogueHighlightStyle.underline => '下划线',
+            },
+            selected: value.dialogueHighlightStyle == style,
+            onTap: () => _apply(
+              (current) => current.copyWith(dialogueHighlightStyle: style),
+            ),
+          ),
+      ],
+    ),
+  );
+
+
   Widget _listeningSection() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       const ReaderSettingsSectionHeader(title: '听书'),
+      if (widget.showListeningSource)
+        ReaderSettingsNavRow(
+          label: '听书方式',
+          icon: LucideIcons.headphones,
+          onTap: () =>
+              Navigator.pop(context, ReaderMoreSettingsResult.listeningSource),
+        ),
       ReaderSettingsSwitchRow(
         label: '跟随翻页',
         value: value.listeningFollow,
@@ -307,7 +355,8 @@ class _ReaderMoreSettingsSheetState
     return Wrap(
       children: [
         dot(null),
-        for (final argb in ReaderPreferences.narrationHighlightPresets) dot(argb),
+        for (final argb in ReaderPreferences.narrationHighlightPresets)
+          dot(argb),
       ],
     );
   }
