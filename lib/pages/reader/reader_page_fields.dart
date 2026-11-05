@@ -34,7 +34,11 @@ mixin _ReaderPageFields on State<ReaderPage> {
   String? _error;
   ReaderPreferences _preferences = const ReaderPreferences();
   ReaderThemePreset _dayTheme = ReaderThemePreset.light;
-  bool _controlsVisible = false;
+  final ValueNotifier<bool> _controlsVisibility = ValueNotifier(false);
+  bool get _controlsVisible => _controlsVisibility.value;
+  AudioToneSet? _readerTones;
+  BackendRequest? _readerTonesRequest;
+  DateTime? _readerTonesAttempt;
 
   /// 自动翻页: a repeating timer flips forward every [ReaderPreferences.autoTurnSeconds]
   /// seconds; any tap or drag stops it. See

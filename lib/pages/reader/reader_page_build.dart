@@ -91,6 +91,9 @@ extension _ReaderPageBuild on _ReaderPageState {
                             pageIndex: _pageIndex,
                           ),
                           onReturnOriginalProgress: _returnToOriginalProgress,
+                          // 「从本页听」= 从当前页第一段重新起播，引擎跟圆钮
+                          // 听书同一个默认值（系统朗读时留在阅读页念，不再
+                          // 硬吃作品音频），由 `_openListening` 统一分派。
                           onListenFromPage: () =>
                               unawaited(_openListening(fromPage: true)),
                           viewportChanges: _scrollController,
@@ -262,23 +265,7 @@ extension _ReaderPageBuild on _ReaderPageState {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 听书胶囊贴在控制条正上方：菜单呼出时才有，左上角对齐。
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: ReaderListenCapsuleHost(
-              bookId: widget.bookId,
-              cover: widget.cover,
-              preset: preset,
-              animate: !einkModeNotifier.value,
-              busy: _loading || _error != null,
-              onStartFromPage: () =>
-                  unawaited(_openListening(fromPage: true, keepControls: true)),
-              onCollapse: _toggleControls,
-            ),
-          ),
-        ),
+        _buildReaderMenuPlayers(preset),
         ReaderControls(
           key: const ValueKey('reader-controls'),
           preferences: _displayPreferences,
@@ -296,8 +283,6 @@ extension _ReaderPageBuild on _ReaderPageState {
           onDirectory: _showDirectory,
           onNight: _toggleNightTheme,
           onAppearance: _showAppearanceSettings,
-          onListen: () => unawaited(_openListening()),
-          showListening: true,
         ),
       ],
     );
@@ -320,6 +305,18 @@ extension _ReaderPageBuild on _ReaderPageState {
           OutlinedButton(
             onPressed: () => _load(startAtEnd: _requestedStartAtEnd),
             child: const Text('重试'),
+          ),
+          // 空版权页和暂不可用章节不应把整本书困在重试页。
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            children: [
+              if (_index > 0)
+                TextButton(onPressed: _prev, child: const Text('上一章')),
+              TextButton(onPressed: _showDirectory, child: const Text('目录')),
+              if (_index < widget.chapters.length - 1)
+                TextButton(onPressed: _next, child: const Text('下一章')),
+            ],
           ),
         ],
       ),

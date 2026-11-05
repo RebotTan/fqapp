@@ -11,6 +11,8 @@ import '../models/chapter_ideas.dart';
 import '../models/audio_extra.dart';
 import '../models/comment_reply.dart';
 import '../models/media_item.dart';
+import '../services/backend_transport.dart' show BackendRequest;
+import '../widgets/reader/reader_listen_button.dart';
 import '../services/api_client.dart';
 import '../services/app_theme.dart';
 import '../services/chapter_cache_store.dart';
@@ -31,6 +33,7 @@ import '../services/eink_refresh.dart';
 import '../services/fair_memory.dart';
 import '../services/volume_key.dart';
 import '../services/reader_history.dart';
+import '../services/audio_preferences.dart';
 import '../services/reader_preferences.dart';
 import '../services/reader_tap_zones.dart';
 import '../services/reader_underline_store.dart';
@@ -69,6 +72,7 @@ part 'reader/reader_page_progress.dart';
 part 'reader/reader_page_build.dart';
 part 'reader/reader_page_content.dart';
 part 'reader/reader_page_joined_content.dart';
+part 'reader/reader_page_menu_players.dart';
 
 typedef ChapterTextLoader = Future<String> Function(Chapter chapter);
 typedef _LoadedChapter = ({String text, bool fetched});
@@ -381,6 +385,8 @@ class _ReaderPageState extends State<ReaderPage>
 
   @override
   void dispose() {
+    _controlsVisibility.dispose();
+    _readerTonesRequest?.cancel();
     _followPoll.dispose();
     _chapterRequestHandles.cancelAll();
     VolumeKeyService.instance.setOnVolumeKey(null);
