@@ -59,8 +59,6 @@ class _AudioPlaybackController extends ChangeNotifier
   bool _autoAdvance = true;
   String? _error;
   String _toneId = '0';
-  String _excerpt = '';
-  int _excerptGeneration = 0;
   double _rate = 1;
   // Position ticks (~5Hz) rebuild progress/read-along listeners, not the page.
   final ValueNotifier<Duration> _position = ValueNotifier(Duration.zero);
@@ -506,7 +504,6 @@ class _AudioPlaybackController extends ChangeNotifier
     });
     _publishReadAlong();
     _publishMoreState();
-    unawaited(_loadExcerpt(_chapters[index].itemId));
     NativePlayer? candidate;
     try {
       await _settingsReady;
@@ -1252,28 +1249,6 @@ class _AudioPlaybackController extends ChangeNotifier
       ? 'narrator'
       : 'tts';
 
-  Future<void> _loadExcerpt(String itemId) async {
-    final generation = ++_excerptGeneration;
-    String? text;
-    if (request.excerptLoader != null) {
-      try {
-        text = await request.excerptLoader!(itemId);
-      } catch (_) {
-        text = null;
-      }
-    } else if (!_offline) {
-      try {
-        final summary = await ApiClient.instance.chapterSummaries(_bookId, [
-          itemId,
-        ]);
-        text = summary.forItem(itemId);
-      } catch (_) {
-        text = null;
-      }
-    }
-    if (_closed || generation != _excerptGeneration) return;
-    _update(() => _excerpt = text?.trim() ?? '');
-  }
 
   bool get _offline =>
       request.sourceLoader != null ||
@@ -1373,7 +1348,6 @@ class _AudioPlaybackController extends ChangeNotifier
         _toneId = toneId;
         _versionHasFixedTone = targetHasFixedTone;
         _extras = const AudioExtras();
-        _excerpt = '';
         _error = null;
         _position.value = Duration.zero;
         _duration = Duration.zero;
