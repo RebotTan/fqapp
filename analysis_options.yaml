@@ -16,6 +16,7 @@ analyzer:
     - third_party/**
     - .tools/**
     - android/**
+    - linux/**
     - windows/**
 
 linter:
