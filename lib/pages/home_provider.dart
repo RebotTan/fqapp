@@ -244,7 +244,7 @@ Future<_Attempt<T>> _attempt<T>(Future<T> future) async {
 /// and feed before the first await, so switching tabs can never redirect a
 /// late response into a different tab's cache.
 class HomeNotifier extends Notifier<HomeState> {
-  static const tabs = ['全部', '小说', '听书'];
+  static const tabs = ['小说', '听书'];
   static const tabKinds = {'小说': 'book', '听书': 'audio'};
   static const tabTypes = {'小说': 2, '听书': 5};
 
@@ -693,7 +693,6 @@ class HomeNotifier extends Notifier<HomeState> {
   Future<_FetchedFeed> _loadInitial(int tabIndex) async {
     final identity = identityOf(tabIndex);
     final name = identity.name;
-    if (name == '全部') return _loadAllInitial();
 
     final kind = identity.kind;
     final tabType = identity.tabType;
@@ -738,7 +737,14 @@ class HomeNotifier extends Notifier<HomeState> {
         loaderFailure = loaderError;
       }
     }
-    return _initialFromSearch(searchName, kind, loaderFailure);
+    try {
+      return await _initialFromSearch(searchName, kind, loaderFailure);
+    } catch (searchError) {
+      // 首屏兜底：首页的小说流和搜索都拿不到东西时，混入听书搜索的结果，
+      // 别把首屏留给一张空白错误页。
+      if (tabIndex != 0) rethrow;
+      return _loadAllInterleaved(_Attempt<_FetchedFeed>.error(searchError));
+    }
   }
 
   /// 分类首页的搜索兜底（流不可用 / 回答的是别的分类时走这里）。
@@ -765,40 +771,8 @@ class HomeNotifier extends Notifier<HomeState> {
     );
   }
 
-  /// "全部" combines the novel recommendation stream with first pages for
-  /// the other supported categories.
-  /// Loads the "全部" tab.
-  ///
-  /// The official bookstore tab (`tab_type=2`) shows its own blocks and nothing
-  /// else, so once the recommendation stream answers we stop there: the former
-  /// cross-media interleave — mixing short drama, manju, manga and audio search
-  /// results into the same card list — is gone. Those sources keep their own
-  /// tabs.
-  ///
-  /// The interleave survives as a degraded path only: when the recommendation
-  /// stream fails outright, mixing the other sources keeps the tab usable
-  /// instead of blanking it.
-  Future<_FetchedFeed> _loadAllInitial() async {
-    final recommendation = await _attempt(_loadInitial(1));
-    final page = recommendation.value;
-    if (page != null && (page.items.isNotEmpty || page.cells.isNotEmpty)) {
-      return _FetchedFeed(
-        items: page.items,
-        cells: page.cells,
-        tabs: page.tabs,
-        nextOffset: page.nextOffset,
-        sessionId: page.sessionId,
-        searchPage: page.searchPage,
-        searchPages: {'小说': page.searchPage},
-        recommendExhausted: page.recommendExhausted,
-        hasMore: page.items.isNotEmpty || page.nextOffset != null,
-      );
-    }
-    return _loadAllInterleaved(recommendation);
-  }
-
-  /// Degraded path for [loadAll]: the recommendation stream is unavailable, so
-  /// mix whatever the other sources returned.
+  /// 首屏兜底：首页的小说流与搜索都失败时，混入「听书」的搜索结果，
+  /// 让首屏不至于只剩一张错误页。
   Future<_FetchedFeed> _loadAllInterleaved(
     _Attempt<_FetchedFeed> recommendation,
   ) => _assembleAllSources(
@@ -873,7 +847,6 @@ class HomeNotifier extends Notifier<HomeState> {
   Future<_FetchedFeed> _loadNext(int tabIndex, _TabFeed feed) async {
     final identity = identityOf(tabIndex);
     final name = identity.name;
-    if (name == '全部') return _loadAllNext(feed);
 
     final kind = identity.kind;
     final searchName = identity.tabType == 2 ? '小说' : name;
@@ -938,24 +911,6 @@ class HomeNotifier extends Notifier<HomeState> {
       searchPage: pageNumber,
       recommendExhausted: true,
       hasMore: items.isNotEmpty,
-    );
-  }
-
-  Future<_FetchedFeed> _loadAllNext(_TabFeed feed) {
-    // Novel recommendations and search have their own cursor. In particular,
-    // the first fallback search must start at page one even if the other
-    // categories have already loaded several pages.
-    final bookFeed = _TabFeed()
-      ..offset = feed.offset
-      ..sessionId = feed.sessionId
-      ..searchPage = feed.searchPages['小说'] ?? 0
-      ..recommendExhausted = feed.recommendExhausted;
-    bookFeed.seen.addAll(feed.seen);
-    final audioPage = (feed.searchPages['听书'] ?? 0) + 1;
-    return _assembleAllSources(
-      recommendationFuture: _attempt(_loadNext(1, bookFeed)),
-      audioFuture: _attempt(_searchLoader('听书', page: audioPage)),
-      previous: feed,
     );
   }
 
@@ -1058,7 +1013,6 @@ class HomeNotifier extends Notifier<HomeState> {
     }
     return null;
   }
-
 
   List<MediaItem> _forceKind(List<MediaItem> items, String kind) {
     // copyWith rather than a hand-written rebuild: rebuilding by hand dropped

@@ -48,7 +48,8 @@ class HomeFeedCache {
   HomeFeedCache({HiveInterface? hive}) : _hive = hive ?? Hive;
 
   static final HomeFeedCache instance = HomeFeedCache();
-  static const _boxName = 'home_feed_cache_v1';
+  // v2: 顶栏去掉「推荐」后下标整体前移，v1 的 '0'/'1' 快照会落到别的分类上。
+  static const _boxName = 'home_feed_cache_v2';
 
   /// Snapshots older than this are not restored. The refresh always replaces
   /// them, so the bound only stops a long-absent user from being shown an

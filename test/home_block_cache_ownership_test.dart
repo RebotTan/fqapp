@@ -21,7 +21,7 @@ void main() {
   setUp(() => HomeFeedCache.hiveReady = false);
   tearDown(() => HomeFeedCache.hiveReady = false);
 
-  testWidgets('听书不再捡回推荐那套区块', (tester) async {
+  testWidgets('听书不再捡回小说那套区块', (tester) async {
     await tester.binding.setSurfaceSize(const Size(400, 2600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -46,7 +46,7 @@ void main() {
       if (tabType == 2) {
         // 推荐：384 → 385 的卡片流，真机上还会带 511 排行榜。
         return HomepagePage(
-          items: [card('rec-1', '推荐书', 'book')],
+          items: [card('rec-1', '小说书', 'book')],
           cells: [
             HomeCell(
               showType: 384,
@@ -60,7 +60,7 @@ void main() {
                   name: '',
                   id: '',
                   style: const {},
-                  items: [card('rec-1', '推荐书', 'book')],
+                  items: [card('rec-1', '小说书', 'book')],
                   children: const [],
                 ),
               ],
@@ -108,24 +108,24 @@ void main() {
       ),
     );
 
-    // 推荐先画出它自己的卡片流，区块管线因此缓存了一份 body。
+    // 小说先画出它自己的卡片流，区块管线因此缓存了一份 body。
     await tester.pumpAndSettle();
-    expect(find.text('推荐书'), findsWidgets);
+    expect(find.text('小说书'), findsWidgets);
 
     // 切到听书：337 没有渲染器，必须落到卡片网格。
-    await tester.tap(find.byKey(const ValueKey('home_category_2')));
+    await tester.tap(find.byKey(const ValueKey('home_category_1')));
     await tester.pumpAndSettle();
     expect(find.text('听书卡'), findsWidgets);
-    expect(find.text('推荐书'), findsNothing);
+    expect(find.text('小说书'), findsNothing);
 
     // 任何一次带着「同一份 cells 实例」的重建：翻页标志翻转就是最典型的一次。
-    // 修好之前，这一步会命中区块缓存、把推荐那套 body 交回来。
+    // 修好之前，这一步会命中区块缓存、把小说那套 body 交回来。
     notifier.loadMore();
     await tester.pump();
     expect(
-      find.text('推荐书'),
+      find.text('小说书'),
       findsNothing,
-      reason: '听书的 cells 渲染不出区块时，缓存必须作废，不能捡回推荐那套',
+      reason: '听书的 cells 渲染不出区块时，缓存必须作废，不能捡回小说那套',
     );
     expect(find.text('听书卡'), findsWidgets);
   });

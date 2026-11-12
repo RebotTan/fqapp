@@ -218,11 +218,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 排行榜标题在；卡片流合并进一个「为你推荐」段落，上游的「猜你喜欢」
-    // 这个名字不再出现。
+    // 排行榜标题在；卡片流合并进顶栏第一个分类（小说）的段落，上游的
+    // 「猜你喜欢」这个名字不再出现。
     expect(find.text('排行榜'), findsWidgets);
     expect(find.text('猜你喜欢'), findsNothing);
-    expect(find.text('为你推荐'), findsOneWidget);
+    expect(find.text('小说'), findsWidgets);
     // 排行榜预览：前三名戴 TOP 角标，名次来自榜单顺序。
     expect(find.text('TOP 1'), findsWidgets);
     expect(find.text('TOP 2'), findsWidgets);

@@ -38,13 +38,13 @@ import 'home_provider.dart';
 /// ```
 /// 搜索行（固定）
 /// 分类条（固定，仅下方内容横滑）
-/// 继续阅读          ← 只有「推荐」且有阅读史：一行字，无封面无卡面
+/// 继续阅读          ← 首页且有阅读史：一行字，无封面无卡面
 /// 排行榜            ← 上游 RankCellV3，横滑大封面 + 名次
-/// 为你推荐 / 分类名  ← 统一的书籍网格
+/// 分类名            ← 统一的书籍网格
 /// 流尾 / 加载中 / 重试
 /// ```
 ///
-/// 「推荐」只画书：上游的卡片流是混排（短剧、漫剧、听书都夹在里面），这里按
+/// 只画书：上游的卡片流是混排（短剧、漫剧、听书都夹在里面），这里按
 /// 当前分类的种类过滤，其余媒介留在各自分类里。上游的其余区块仍然按
 /// `show_type` 分发（见 [HomeCellRenderers]），没登记的类型不会让页面变空。
 class HomePage extends ConsumerStatefulWidget {
@@ -215,7 +215,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Future<void> _retryLoadMore() =>
       ref.read(homeProvider.notifier).retryLoadMore();
 
-  /// 当前分类的种类：「推荐」与「全部」都会落到 `book`。
+  /// 当前分类的种类：默认按 `book` 处理。
   String _kindOf(HomeState state) =>
       ref.read(homeProvider.notifier).identityOf(state.tabIndex).kind;
 
@@ -241,11 +241,11 @@ class _HomePageState extends ConsumerState<HomePage> {
     return owner == state.tabIndex ? cells : const [];
   }
 
-  /// 顶栏分类：固定用本地六分类（推荐/小说/短剧/漫剧/漫画/听书）。
+  /// 顶栏分类：固定用本地两项（小说/听书）。
   ///
-  /// 2026-10-24 用户决定回退服务端 11 项方案——服务端表没有「短剧/漫剧」，
-  /// 跨媒介入口只能本地给；点击身份由 `homeProvider` 的 `usesLocalTabs`
-  /// 本地表驱动，与这里的下标一一对应。
+  /// 2026-10-24 用户决定回退服务端 11 项方案；2026-11-12 又去掉「推荐」——
+  /// 它与「小说」拉的是同一个 `tab_type=2` 流，内容完全重复。点击身份由
+  /// `homeProvider` 的 `usesLocalTabs` 本地表驱动，与这里的下标一一对应。
   List<HomeCategory> _categoriesOf(HomeState state) => homeCategories;
 
   @override
@@ -266,7 +266,9 @@ class _HomePageState extends ConsumerState<HomePage> {
         // 窗口再宽只把卡片放大，不会往格子里塞更多小封面。
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.sizeOf(context).width >= 840 ? double.infinity : 840,
+            maxWidth: MediaQuery.sizeOf(context).width >= 840
+                ? double.infinity
+                : 840,
           ),
           child: SafeArea(
             bottom: false,
@@ -365,7 +367,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         SliverToBoxAdapter(
           child: HomeFeedError(
             headline: '故事还在路上',
-            message: '暂时无法加载推荐，稍后再试一次。',
+            message: '暂时无法加载内容，稍后再试一次。',
             detail: state.error!,
             onRetry: _refresh,
           ),
@@ -375,7 +377,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     final items = _visibleItems(state);
     if (items.isNotEmpty) _hadContent = true;
-    final now = _readingNow(state);
+    final now = _readingNow();
     final lead = now?.item;
     final blockBody = _blockBodySlivers(
       state,
@@ -423,16 +425,15 @@ class _HomePageState extends ConsumerState<HomePage> {
         child: HomeFeedEmpty(
           title: '暂无内容',
           message: '换个分类，或刷新发现新故事',
-          actionLabel: '刷新推荐',
+          actionLabel: '刷新看看',
           onRefresh: _refresh,
         ),
       ),
     ];
   }
 
-  /// 「继续阅读」显示哪一本：只在推荐页、有阅读史、且这一本没被关掉时出现。
-  ReadingNow? _readingNow(HomeState state) {
-    if (state.tabIndex != 0) return null;
+  /// 「继续阅读」显示哪一本：首页有阅读史、且这一本没被关掉时出现。
+  ReadingNow? _readingNow() {
     final now = latestReadingNow();
     if (now == null) return null;
     return HomeContinuePreferences.instance.isDismissed(now.item) ? null : now;
@@ -524,7 +525,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       }
     }
     if (entries.isNotEmpty) {
-      // 多个卡片流合并成一个网格：首页只保留一个「为你推荐」段落，块与块
+      // 多个卡片流合并成一个网格：首页只保留一个网格段落，块与块
       // 之间的边界对读书的人没有意义。
       slivers.add(
         SliverToBoxAdapter(child: HomeSectionHeader(title: _gridTitle(state))),
@@ -616,10 +617,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  String _gridTitle(HomeState state) {
-    if (state.tabIndex == 0) return '为你推荐';
-    return ref.read(homeProvider.notifier).identityOf(state.tabIndex).name;
-  }
+  String _gridTitle(HomeState state) =>
+      ref.read(homeProvider.notifier).identityOf(state.tabIndex).name;
 
   /// 流尾三态：加载中 / 追加失败可重试 / 已到底。
   Widget _footer(HomeState state) {

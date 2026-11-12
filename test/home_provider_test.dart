@@ -62,7 +62,7 @@ void main() {
     );
     final container = ProviderContainer();
     addTearDown(container.dispose);
-    container.read(provider.notifier).selectTab(1);
+    await container.read(provider.notifier).load();
     await _flushMicrotasks();
     expect(container.read(provider).items.map((item) => item.id), ['novel']);
   });
@@ -275,24 +275,23 @@ void main() {
 
     final firstCells = container.read(provider).cells;
     expect(firstCells.single.showType, 384);
-    expect(
-      firstCells.single.children.single.items.map((i) => i.id),
-      isEmpty,
-    );
+    expect(firstCells.single.children.single.items.map((i) => i.id), isEmpty);
 
     await container.read(provider.notifier).loadMore();
 
     // 追加页的书出现在流区块的渲染列表里。
     final merged = container.read(provider).cells;
-    expect(
-      merged.single.children.single.items.map((i) => i.id),
-      ['next-1', 'next-2'],
-    );
+    expect(merged.single.children.single.items.map((i) => i.id), [
+      'next-1',
+      'next-2',
+    ]);
     // items 也照常追加（旧管线/去重语义不变）。
-    expect(
-      container.read(provider).items.map((i) => i.id),
-      ['first-1', 'first-2', 'next-1', 'next-2'],
-    );
+    expect(container.read(provider).items.map((i) => i.id), [
+      'first-1',
+      'first-2',
+      'next-1',
+      'next-2',
+    ]);
   });
 
   test('the combined feed keeps novels when recommendations fail', () async {
@@ -326,6 +325,28 @@ void main() {
     expect(queries, containsAll(['小说:1', '小说:2']));
   });
 
+  test('首页首屏兜底：小说流与搜索都空了也混入听书', () async {
+    final provider = NotifierProvider<HomeNotifier, HomeState>(
+      () => HomeNotifier(
+        homepageLoader:
+            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+                throw StateError('recommendations unavailable'),
+        searchLoader: (query, {int page = 1}) async => query == '听书'
+            ? [
+                SearchTab(
+                  title: '听书',
+                  items: [_item('a', kind: 'audio')],
+                ),
+              ]
+            : const [],
+      ),
+    );
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await container.read(provider.notifier).load();
+    expect(container.read(provider).items.map((item) => item.id), ['a']);
+  });
+
   test('a late response cannot overwrite or populate another tab', () async {
     final requests = <int, List<Completer<HomepagePage>>>{};
 
@@ -350,9 +371,9 @@ void main() {
     addTearDown(container.dispose);
     final notifier = container.read(provider.notifier);
 
-    notifier.selectTab(1); // 小说, request still pending.
+    unawaited(notifier.load()); // 小说（默认下标 0）, request still pending.
     expect(requests[2], hasLength(1));
-    notifier.selectTab(2); // 听书 supersedes it.
+    notifier.selectTab(1); // 听书 supersedes it.
     expect(requests[5], hasLength(1));
 
     requests[5]!.single.complete(
@@ -363,7 +384,7 @@ void main() {
       ),
     );
     await _flushMicrotasks();
-    expect(container.read(provider).tabIndex, 2);
+    expect(container.read(provider).tabIndex, 1);
     expect(container.read(provider).items.single.id, 'audio');
     expect(container.read(provider).items.single.kind, 'audio');
 
@@ -376,11 +397,11 @@ void main() {
       ),
     );
     await _flushMicrotasks();
-    expect(container.read(provider).tabIndex, 2);
+    expect(container.read(provider).tabIndex, 1);
     expect(container.read(provider).items.single.id, 'audio');
 
     // The canceled novel request must not make an empty cache look loaded.
-    notifier.selectTab(1);
+    notifier.selectTab(0);
     expect(requests[2], hasLength(2));
     requests[2]!.last.complete(
       HomepagePage(
@@ -393,7 +414,6 @@ void main() {
     expect(container.read(provider).items.single.id, 'fresh-book');
     expect(container.read(provider).items.single.kind, 'book');
   });
-
 
   group('server tab strip drives the tab identity', () {
     const serverTabs = <HomeTabItem>[
@@ -470,11 +490,7 @@ void main() {
         final notifier = container.read(provider.notifier);
 
         // 分类条还没回来时，下标只能按本地兜底表解释（首屏就是这样）。
-        expect(notifier.identityOf(0), (
-          name: '全部',
-          kind: 'book',
-          tabType: null,
-        ));
+        expect(notifier.identityOf(0), (name: '小说', kind: 'book', tabType: 2));
 
         await notifier.load();
 
