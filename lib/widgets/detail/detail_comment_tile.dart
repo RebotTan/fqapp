@@ -7,6 +7,7 @@ import 'package:flutter_lucide/flutter_lucide.dart';
 import '../../models/book_comment.dart';
 import '../../models/comment_reply.dart';
 import '../../services/poster_cache.dart';
+import '../comment_emoji.dart';
 import '../comment_images.dart';
 import '../home/home_design.dart';
 import 'detail_sections.dart';
@@ -135,8 +136,8 @@ class _DetailCommentTileState extends State<DetailCommentTile> {
           ],
           const SizedBox(height: 6),
           if (comment.text.isNotEmpty)
-            Text(
-              comment.text,
+            CommentEmojiText(
+              text: comment.text,
               key: ValueKey('detail_review_text_${comment.id}'),
               maxLines: widget.maxTextLines,
               overflow: widget.maxTextLines == null
