@@ -53,7 +53,7 @@ private sealed interface Row {
 }
 
 @Composable
-fun ChapterListScreen(bookId: String, onBack: () -> Unit) {
+fun ChapterListScreen(bookId: String, onBack: () -> Unit, onOpenReader: (String) -> Unit) {
     val context = LocalContext.current
     val repository = remember { CatalogRepository(context) }
     val store = remember { SqliteLibraryStore(context) }
@@ -120,11 +120,7 @@ fun ChapterListScreen(bookId: String, onBack: () -> Unit) {
                                             .fillMaxWidth()
                                             .clickable {
                                                 store.saveProgress(bookId, row.ref, row.index)
-                                                scope.launch {
-                                                    snackbar.showSnackbar(
-                                                        "已记为「${row.ref.title}」，阅读器在 P3 提供",
-                                                    )
-                                                }
+                                                onOpenReader(row.ref.itemId)
                                             }
                                             .padding(horizontal = 16.dp, vertical = 14.dp),
                                     )

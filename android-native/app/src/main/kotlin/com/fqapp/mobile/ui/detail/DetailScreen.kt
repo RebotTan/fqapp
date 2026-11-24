@@ -52,7 +52,12 @@ private sealed interface DetailState {
 }
 
 @Composable
-fun DetailScreen(bookId: String, onBack: () -> Unit, onOpenChapters: () -> Unit) {
+fun DetailScreen(
+    bookId: String,
+    onBack: () -> Unit,
+    onOpenChapters: () -> Unit,
+    onOpenReader: () -> Unit,
+) {
     val context = LocalContext.current
     val repository = remember { CatalogRepository(context) }
     val store = remember { SqliteLibraryStore(context) }
@@ -131,11 +136,7 @@ fun DetailScreen(bookId: String, onBack: () -> Unit, onOpenChapters: () -> Unit)
                             Text(if (current == null) "下载" else "${current.first}/${current.second}")
                         }
                         Button(
-                            onClick = {
-                                scope.launch {
-                                    snackbar.showSnackbar("阅读器在 P3 提供，这里先只做详情展示")
-                                }
-                            },
+                            onClick = onOpenReader,
                             modifier = Modifier.weight(1f),
                         ) {
                             Text("开始阅读")
