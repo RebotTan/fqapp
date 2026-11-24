@@ -13,18 +13,31 @@ import kotlinx.coroutines.withContext
  */
 class CatalogRepository(private val context: Context) {
 
-    suspend fun search(keyword: String, offset: Int = 0, count: Int = 20): List<Book> =
-        withContext(Dispatchers.IO) {
-            val payload = http().getJson(
-                "/api/v1/search",
-                mapOf(
-                    "query" to keyword,
-                    "offset" to offset.toString(),
-                    "count" to count.toString(),
-                ),
-            )
-            Book.listFromSearch(payload)
+    suspend fun channels(): List<Channel> = withContext(Dispatchers.IO) {
+        try {
+            Channels.parse(http().getJson("/api/v1/recommend/channels"))
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // 频道只是导航辅助，拿不到就退回纯搜索。
+            emptyList()
         }
+    }
+
+    suspend fun search(
+        keyword: String,
+        offset: Int = 0,
+        count: Int = 20,
+        tabType: Int? = null,
+    ): List<Book> = withContext(Dispatchers.IO) {
+        val query = buildMap {
+            put("query", keyword)
+            put("offset", offset.toString())
+            put("count", count.toString())
+            if (tabType != null) put("tab_type", tabType.toString())
+        }
+        Book.listFromSearch(http().getJson("/api/v1/search", query))
+    }
 
     suspend fun detail(bookId: String): Book = withContext(Dispatchers.IO) {
         Book.fromDetailPayload(http().getJson("/api/v1/books/$bookId"))

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fqapp.mobile.data.Book
+import androidx.compose.material3.FilterChip
 
 @Composable
 fun StoreScreen(
@@ -56,6 +59,28 @@ fun StoreScreen(
             )
             FilledIconButton(onClick = { viewModel.search() }) {
                 Icon(Icons.Filled.Search, contentDescription = "搜索")
+            }
+        }
+        if (viewModel.channels.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item {
+                    FilterChip(
+                        selected = viewModel.channel == null,
+                        onClick = { viewModel.pickChannel(null) },
+                        label = { Text("全部") },
+                    )
+                }
+                items(viewModel.channels, key = { it.tabType }) { channel ->
+                    FilterChip(
+                        selected = viewModel.channel == channel.tabType,
+                        onClick = { viewModel.pickChannel(channel.tabType) },
+                        label = { Text(channel.title) },
+                    )
+                }
             }
         }
         HorizontalDivider()

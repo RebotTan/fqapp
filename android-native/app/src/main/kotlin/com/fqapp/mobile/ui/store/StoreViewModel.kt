@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.fqapp.mobile.data.Book
 import com.fqapp.mobile.data.CatalogRepository
+import com.fqapp.mobile.data.Channel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -24,9 +25,21 @@ class StoreViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var results by mutableStateOf<List<Book>>(emptyList())
         private set
+    var channels by mutableStateOf<List<Channel>>(emptyList())
+        private set
+    var channel by mutableStateOf<Int?>(null)
+        private set
 
     init {
+        viewModelScope.launch { channels = repository.channels() }
         search(keyword)
+    }
+
+    /** 选频道后按该频道重搜；null 表示不限频道。 */
+    fun pickChannel(tabType: Int?) {
+        if (channel == tabType) return
+        channel = tabType
+        search()
     }
 
     fun updateKeyword(text: String) {
@@ -46,7 +59,7 @@ class StoreViewModel(app: Application) : AndroidViewModel(app) {
             loading = true
             error = null
             try {
-                val found = repository.search(query)
+                val found = repository.search(query, tabType = channel)
                 results = found
                 if (found.isEmpty()) error = "没有找到「$query」"
             } catch (cancelled: CancellationException) {
