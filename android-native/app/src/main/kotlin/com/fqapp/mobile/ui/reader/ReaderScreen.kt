@@ -44,10 +44,14 @@ import com.fqapp.mobile.data.CatalogRepository
 import com.fqapp.mobile.data.ChapterRef
 import com.fqapp.mobile.library.ChapterLoader
 import com.fqapp.mobile.library.SqliteLibraryStore
+import com.fqapp.mobile.settings.ReadingPrefs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-private val bodyStyle = TextStyle(fontSize = 17.sp, lineHeight = 30.sp)
+private fun bodyStyle() = TextStyle(
+    fontSize = 17.sp * ReadingPrefs.fontScale,
+    lineHeight = 30.sp * ReadingPrefs.fontScale,
+)
 
 /**
  * 阅读器：章内按屏分页，点击左右三分之一翻页，翻到头自动换章。
@@ -108,11 +112,12 @@ fun ReaderScreen(
         val density = LocalDensity.current
         val pageHeight = with(density) { (maxHeight - 96.dp).toPx() }
         val pageWidth = with(density) { maxWidth.roundToPx() }
-        val pages = remember(text, pageWidth, pageHeight) {
+        val style = bodyStyle()
+        val pages = remember(text, pageWidth, pageHeight, style) {
             val body = text ?: return@remember emptyList<IntRange>()
             val layout = measurer.measure(
                 text = AnnotatedString(body),
-                style = bodyStyle,
+                style = style,
                 constraints = Constraints(maxWidth = pageWidth),
             )
             ReaderPaginator.pageRanges(
@@ -183,7 +188,7 @@ fun ReaderScreen(
                     text == null -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     current != null -> Text(
                         text = text!!.substring(current.first, current.last + 1),
-                        style = bodyStyle,
+                        style = style,
                         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
                     )
                 }

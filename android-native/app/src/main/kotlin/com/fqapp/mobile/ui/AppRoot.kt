@@ -23,6 +23,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.fqapp.mobile.ui.chapters.ChapterListScreen
 import com.fqapp.mobile.ui.detail.DetailScreen
+import com.fqapp.mobile.ui.profile.ProfileScreen
 import com.fqapp.mobile.ui.audio.AudioScreen
 import com.fqapp.mobile.ui.reader.ReaderScreen
 import com.fqapp.mobile.ui.shelf.ShelfScreen
@@ -83,7 +84,7 @@ fun AppRoot() {
                 StoreScreen(onOpenBook = { bookId -> navController.navigate("book/$bookId") })
             }
             composable("profile") {
-                PlaceholderScreen("我的", "P6 才做设置、缓存管理与次要功能。")
+                ProfileScreen()
             }
             composable(
                 route = "book/{bookId}",

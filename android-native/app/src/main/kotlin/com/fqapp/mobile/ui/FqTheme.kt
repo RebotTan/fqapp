@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import com.fqapp.mobile.settings.ReadingPrefs
 
 /**
  * 配色直接取自 `lib/widgets/home/home_design.dart` 的 HomePalette，
@@ -27,7 +28,10 @@ object FqColors {
 }
 
 @Composable
-fun FqTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun FqTheme(
+    darkTheme: Boolean = ReadingPrefs.darkOverride ?: isSystemInDarkTheme(),
+    content: @Composable () -> Unit,
+) {
     val scheme = if (darkTheme) {
         darkColorScheme(
             primary = FqColors.accent,
