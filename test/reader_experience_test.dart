@@ -123,6 +123,22 @@ void main() {
       return state;
     }
 
+    for (final style in [
+      ReaderPageTurnStyle.slide,
+      ReaderPageTurnStyle.cover,
+    ]) {
+      testWidgets('${style.name} prepares the next page before the turn', (
+        tester,
+      ) async {
+        final pager = await pump(tester, style);
+        expect(pager.currentPage, 0);
+        expect(
+          find.byKey(const ValueKey('reader-text-page-1'), skipOffstage: false),
+          findsOneWidget,
+        );
+      });
+    }
+
     testWidgets('none turns instantly while slide animates', (tester) async {
       var page = -1;
       var state = await pump(

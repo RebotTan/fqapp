@@ -768,6 +768,11 @@ class ReaderPagedViewState extends State<ReaderPagedView>
       child: PageView.builder(
         key: ObjectKey(_controller),
         controller: _controller,
+        // Prepare the adjacent text pages before a horizontal turn exposes
+        // them. Keep the cache bounded to one viewport on either side.
+        allowImplicitScrolling:
+            widget.turnStyle == ReaderPageTurnStyle.slide ||
+            widget.turnStyle == ReaderPageTurnStyle.cover,
         pageSnapping: !_followsFinger,
         physics:
             (_boundaryPending ||
