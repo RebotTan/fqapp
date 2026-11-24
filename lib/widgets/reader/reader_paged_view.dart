@@ -323,7 +323,9 @@ class ReaderPagedViewState extends State<ReaderPagedView>
     if (!identical(oldWidget.layout, widget.layout) ||
         oldWidget.hasPreviousChapter != widget.hasPreviousChapter ||
         oldWidget.hasNextChapter != widget.hasNextChapter ||
-        (oldWidget.endPage == null) != (widget.endPage == null)) {
+        (oldWidget.endPage == null) != (widget.endPage == null) ||
+        oldWidget.turnStyle != widget.turnStyle ||
+        oldWidget.instantSwipe != widget.instantSwipe) {
       _cancelPageDrag();
       final oldController = _controller;
       _controller = _newController();
@@ -394,7 +396,7 @@ class ReaderPagedViewState extends State<ReaderPagedView>
             toIndex: target,
           );
         });
-        await _curlAnimation.forward(from: 0);
+        await _curlAnimation.forward(from: 0).orCancel;
       } else {
         await controller.animateToPage(
           target,
@@ -402,6 +404,9 @@ class ReaderPagedViewState extends State<ReaderPagedView>
           curve: Curves.easeOutCubic,
         );
       }
+    } on TickerCanceled {
+      // Changing the turn style or leaving the reader cancels the old curl.
+      // Complete its caller instead of leaving an awaited TickerFuture pending.
     } finally {
       if (identical(controller, _controller)) _turning = false;
     }
@@ -879,7 +884,12 @@ class ReaderPagedViewState extends State<ReaderPagedView>
                   child: child,
                 );
               },
-              child: ColoredBox(color: widget.backgroundColor, child: content),
+              child: RepaintBoundary(
+                child: ColoredBox(
+                  color: widget.backgroundColor,
+                  child: content,
+                ),
+              ),
             );
           }
           return _wrapCurl(_wrapSwipe(content));
