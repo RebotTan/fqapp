@@ -39,6 +39,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.fqapp.mobile.data.Book
 import com.fqapp.mobile.data.CatalogRepository
+import coil.compose.AsyncImage
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import com.fqapp.mobile.data.BookComment
 import com.fqapp.mobile.library.ChapterLoader
 import com.fqapp.mobile.library.SqliteLibraryStore
 import com.fqapp.mobile.ui.store.ErrorState
@@ -174,6 +184,17 @@ fun DetailScreen(
 
 @Composable
 private fun DetailBody(book: Book) {
+    val context = LocalContext.current
+    val repository = remember { CatalogRepository(context) }
+    val comments by produceState<List<BookComment>>(emptyList(), book.id) {
+        value = try {
+            repository.comments(book.id)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -218,5 +239,60 @@ private fun DetailBody(book: Book) {
             book.abstract.ifBlank { "这本书还没有简介。" },
             style = MaterialTheme.typography.bodyLarge,
         )
+        if (comments.isNotEmpty()) {
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text("书评 · ${comments.size}", style = MaterialTheme.typography.titleSmall)
+            comments.forEach { comment ->
+                CommentRow(comment)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommentRow(comment: BookComment) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (comment.avatar.startsWith("http")) {
+                AsyncImage(
+                    model = comment.avatar,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(24.dp).clip(CircleShape),
+                )
+            } else {
+                Box(Modifier.size(24.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant))
+            }
+            Text(
+                comment.userName.ifBlank { "匿名" },
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(start = 8.dp).weight(1f),
+            )
+            if (comment.score > 0) {
+                Text(
+                    "%.1f".format(comment.score / 2.0),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        if (comment.text.isNotBlank()) {
+            Text(comment.text, style = MaterialTheme.typography.bodyMedium)
+        }
+        if (comment.images.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(comment.images) { url ->
+                    AsyncImage(
+                        model = url,
+                        contentDescription = "书评配图",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(88.dp).clip(RoundedCornerShape(8.dp)),
+                    )
+                }
+            }
+        }
     }
 }

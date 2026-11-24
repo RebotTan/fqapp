@@ -60,6 +60,16 @@ class CatalogRepository(private val context: Context) {
             )
         }
 
+    suspend fun comments(bookId: String, count: Int = 10, offset: Int = 0): List<BookComment> =
+        withContext(Dispatchers.IO) {
+            Comments.parse(
+                http().getJson(
+                    "/api/v1/books/$bookId/comments",
+                    mapOf("count" to count.toString(), "offset" to offset.toString()),
+                ),
+            )
+        }
+
     suspend fun directory(bookId: String): List<ChapterVolume> = withContext(Dispatchers.IO) {
         DirectoryParser.parse(http().getJson("/api/v1/books/$bookId/directory"))
     }
