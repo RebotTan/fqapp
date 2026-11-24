@@ -77,6 +77,39 @@ void main() {
       expect(ListeningSession.instance.matches('boundary-book', '2'), isTrue);
     },
   );
+
+  testWidgets(
+    'dragging the progress control cancels the pending advance',
+    (tester) async {
+      final player = _NativeEndingPlayer();
+      final next = Completer<AudioSource>();
+      addTearDown(() {
+        if (!next.isCompleted) next.complete(_source('2'));
+      });
+      await _mount(tester, player: player, nextSource: next.future);
+      player.emitDuration(const Duration(minutes: 10));
+      await _flush(tester);
+
+      player.endPlayback();
+      await _flush(tester);
+
+      // 只拖动不松手：走 onChanged，倒计时必须当场作废。
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('audio-seek'))),
+      );
+      await gesture.moveBy(const Offset(-40, 0));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+      await _flush(tester);
+
+      expect(
+        ListeningSession.instance.matches('boundary-book', '2'),
+        isFalse,
+        reason: 'drag must cancel the pending advance',
+      );
+      await gesture.up();
+    },
+  );
 }
 
 Future<void> _mount(

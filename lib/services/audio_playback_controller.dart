@@ -1167,9 +1167,15 @@ class _AudioPlaybackController extends ChangeNotifier
     }
   }
 
+  void _previewSeek(double position) {
+    _cancelAdvanceCountdown(this);
+    _seekPreview.value = position;
+  }
+
   Future<void> _seekTo(Duration position) async {
     final player = _player;
     if (!_ready || player == null) return;
+    _cancelAdvanceCountdown(this);
     final generation = _generation;
     final seekGeneration = ++_seekGeneration;
     final target = _boundedPosition(position, _duration);
@@ -1441,6 +1447,7 @@ class _AudioPlaybackController extends ChangeNotifier
   Future<void> _close() async {
     if (_closed) return;
     _closed = true;
+    _cancelAdvanceCountdown(this);
     _unregisterFairMemoryFlush?.call();
     _unregisterFairMemoryFlush = null;
     ++_generation;
