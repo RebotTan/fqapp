@@ -90,8 +90,9 @@ void main() {
           chapter('1', '第一章 开端'),
           chapter('2', '第二章 继续'),
         ],
-        chapterLoader: (chapter) async =>
-            chapter.itemId == '1' ? '第一段\n第二段' : '正文二',
+        chapterLoader: (chapter) async => chapter.itemId == '1'
+            ? '\uFEFF\r\n　第一章 开端\r\n\r\n第一段\r\n\u200B \u200B \u200B\r\n第二段\r\n字面 <tag> &amp;\r\n \u200B \u00A0 \u200B \u00A0 \u200B \r\n'
+            : '第二章 继续\n\n正文二\n第二章 继续\n引用结束\n\n',
         sink: sink,
       );
 
@@ -100,7 +101,7 @@ void main() {
       expect(sink.calls.single.fileName, '测试书.txt');
       expect(
         sink.calls.single.text,
-        '# 第一章 开端\n第一段\n第二段\n\n# 第二章 继续\n正文二\n\n',
+        '# 第一章 开端\n第一段\n第二段\n字面 <tag> &amp;\n\n# 第二章 继续\n正文二\n第二章 继续\n引用结束\n\n',
       );
       expect(export.value.running, isFalse);
       expect(export.value.completed, 2);
