@@ -49,6 +49,17 @@ class CatalogRepository(private val context: Context) {
         text
     }
 
+    suspend fun audioSource(bookId: String, itemId: String): AudioSourceParser.Source =
+        withContext(Dispatchers.IO) {
+            AudioSourceParser.parse(
+                http().getJson(
+                    "/api/v1/audio/books/$bookId/chapters/$itemId",
+                    mapOf("tone_id" to "0"),
+                ),
+                itemId = itemId,
+            )
+        }
+
     suspend fun directory(bookId: String): List<ChapterVolume> = withContext(Dispatchers.IO) {
         DirectoryParser.parse(http().getJson("/api/v1/books/$bookId/directory"))
     }

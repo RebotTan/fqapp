@@ -23,6 +23,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.fqapp.mobile.ui.chapters.ChapterListScreen
 import com.fqapp.mobile.ui.detail.DetailScreen
+import com.fqapp.mobile.ui.audio.AudioScreen
 import com.fqapp.mobile.ui.reader.ReaderScreen
 import com.fqapp.mobile.ui.shelf.ShelfScreen
 import com.fqapp.mobile.ui.store.StoreScreen
@@ -108,6 +109,23 @@ fun AppRoot() {
                 )
             }
             composable(
+                route = "book/{bookId}/listen?itemId={itemId}",
+                arguments = listOf(
+                    navArgument("bookId") { type = NavType.StringType },
+                    navArgument("itemId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                AudioScreen(
+                    bookId = entry.arguments?.getString("bookId").orEmpty(),
+                    startItemId = entry.arguments?.getString("itemId"),
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
                 route = "book/{bookId}/read?itemId={itemId}",
                 arguments = listOf(
                     navArgument("bookId") { type = NavType.StringType },
@@ -118,10 +136,12 @@ fun AppRoot() {
                     },
                 ),
             ) { entry ->
+                val bookId = entry.arguments?.getString("bookId").orEmpty()
                 ReaderScreen(
-                    bookId = entry.arguments?.getString("bookId").orEmpty(),
+                    bookId = bookId,
                     startItemId = entry.arguments?.getString("itemId"),
                     onBack = { navController.popBackStack() },
+                    onListen = { itemId -> navController.navigate("book/$bookId/listen?itemId=$itemId") },
                 )
             }
         }

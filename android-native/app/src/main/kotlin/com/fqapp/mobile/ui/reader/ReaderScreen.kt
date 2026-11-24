@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +58,7 @@ fun ReaderScreen(
     bookId: String,
     startItemId: String?,
     onBack: () -> Unit,
+    onListen: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val repository = remember { CatalogRepository(context) }
@@ -138,6 +140,11 @@ fun ReaderScreen(
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
+                    chapters.getOrNull(index)?.let { chapter ->
+                        IconButton(onClick = { onListen(chapter.itemId) }) {
+                            Icon(Icons.Filled.Headset, contentDescription = "听书")
+                        }
+                    }
                 }
             }
             Box(
