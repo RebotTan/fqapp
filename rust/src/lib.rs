@@ -27,6 +27,8 @@ pub mod endpoints;
 pub mod error;
 pub mod filter;
 pub mod json;
+#[cfg(target_os = "android")]
+pub mod jni;
 pub mod mobile;
 pub mod server;
 pub mod sign;
