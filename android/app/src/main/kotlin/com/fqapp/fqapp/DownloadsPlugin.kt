@@ -30,6 +30,8 @@ class DownloadsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var channel: MethodChannel
     private var context: Context? = null
     private val io = Executors.newSingleThreadExecutor()
+    /// 导出都收在「下载/fqapp」下，别和用户自己的文件混在一起。
+    private val subFolder = "fqapp"
     private val main = Handler(Looper.getMainLooper())
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -78,7 +80,10 @@ class DownloadsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             val pending = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    "${Environment.DIRECTORY_DOWNLOADS}/$subFolder",
+                )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             val uri: Uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, pending)
@@ -107,13 +112,16 @@ class DownloadsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 Environment.DIRECTORY_DOWNLOADS,
             )
             return mapOf(
-                "path" to "${downloads.absolutePath}/$stored",
+                "path" to "${downloads.absolutePath}/$subFolder/$stored",
                 "public" to true,
             )
         }
 
-        val directory = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: ctx.filesDir
+        val directory = File(
+            ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: ctx.filesDir,
+            subFolder,
+        )
+        directory.mkdirs()
         val file = File(directory, fileName)
         file.writeBytes(bytes)
         return mapOf("path" to file.absolutePath, "public" to false)

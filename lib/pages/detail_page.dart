@@ -939,6 +939,17 @@ class _DetailPageState extends State<DetailPage> {
                 },
               ),
               DetailSheetOption(
+                key: const Key('detail_download_range'),
+                icon: LucideIcons.list,
+                title: '范围下载',
+                subtitle: '只缓存指定的一段$_chapterUnit节',
+                enabled: _allChapters.length > 1,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  unawaited(_showRangeDownloadDialog());
+                },
+              ),
+              DetailSheetOption(
                 key: const Key('detail_download_cached'),
                 icon: LucideIcons.book_open,
                 title: '离线缓存',
@@ -952,6 +963,113 @@ class _DetailPageState extends State<DetailPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// 范围下载：选起止章，只缓存这一段（同样 pin，不受缓存预算清理）。
+  Future<void> _showRangeDownloadDialog() async {
+    final total = _allChapters.length;
+    if (total < 2) return;
+    final from = TextEditingController(
+      text: '${((_resumeIndex ?? 0) + 1).clamp(1, total)}',
+    );
+    final to = TextEditingController(text: '$total');
+    String? error;
+    final picked = await showDialog<({int from, int to})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialog) {
+          void submit() {
+            final start = int.tryParse(from.text.trim());
+            final end = int.tryParse(to.text.trim());
+            if (start == null ||
+                end == null ||
+                start < 1 ||
+                end < start ||
+                end > total) {
+              setDialog(() => error = '请输入 1 到 $total 之间的$_chapterUnit号，且起始不大于结束');
+              return;
+            }
+            Navigator.pop(dialogContext, (from: start - 1, to: end - 1));
+          }
+
+          return AlertDialog(
+            title: const Text('范围下载'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('全书共 $total$_chapterUnit'),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: const Key('detail_range_from'),
+                        controller: from,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: '起始$_chapterUnit号',
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('至'),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        key: const Key('detail_range_to'),
+                        controller: to,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: '结束$_chapterUnit号',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(error!),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                key: const Key('detail_range_confirm'),
+                onPressed: submit,
+                child: const Text('开始下载'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    // 对话框关闭动画期间 TextField 还在用这两个 controller，这里不主动释放：
+    // 它们只被这个对话框持有，随对话框一起被回收。
+    if (picked == null || !mounted) return;
+    final cache = widget.chapterCache ?? ChapterCacheStore.instance;
+    _attachDownload(
+      WholeBookDownload.start(
+        cache: cache,
+        book: CachedBook(
+          id: _contentId,
+          title: widget.item.title,
+          cover: widget.item.cover,
+          chapters: _allChapters,
+        ),
+        loader:
+            widget.chapterLoader ??
+            (chapter) => ApiClient.instance.contentText(chapter.itemId),
+        startIndex: picked.from,
+        count: picked.to - picked.from + 1,
       ),
     );
   }
