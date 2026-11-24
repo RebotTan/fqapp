@@ -94,8 +94,8 @@ void main() {
     final video = find.byKey(const Key('library-collection-filter-video'));
     expect(tester.widget(all), isA<HomeChip>());
     expect(tester.widget(video), isA<HomeChip>());
-    final selected = _chipDecoration(tester, all);
-    final unselected = _chipDecoration(tester, video);
+    final selected = _chipSurface(tester, all);
+    final unselected = _chipSurface(tester, video);
     expect(selected.color, Colors.black);
     expect(unselected.color, Colors.white);
     expect((unselected.shape as StadiumBorder).side.color, Colors.black);
@@ -103,9 +103,8 @@ void main() {
   });
 }
 
-ShapeDecoration _chipDecoration(WidgetTester tester, Finder chip) {
-  final container = tester.widget<Container>(
-    find.descendant(of: chip, matching: find.byType(Container)).first,
+Material _chipSurface(WidgetTester tester, Finder chip) {
+  return tester.widget<Material>(
+    find.descendant(of: chip, matching: find.byType(Material)),
   );
-  return container.decoration! as ShapeDecoration;
 }
