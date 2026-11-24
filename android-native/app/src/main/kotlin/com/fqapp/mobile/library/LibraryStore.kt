@@ -1,9 +1,8 @@
 package com.fqapp.mobile.library
 
 import android.content.ContentValues
-import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import android.database.sqlite.SQLiteOpenHelper
+import android.content.Context
 import com.fqapp.mobile.data.Book
 import com.fqapp.mobile.data.ChapterRef
 
@@ -44,9 +43,9 @@ interface LibraryStore {
     fun removeBook(bookId: String)
 }
 
-class SqliteLibraryStore(context: Context) : LibraryStore {
+class SqliteLibraryStore(private val database: LibraryDatabase) : LibraryStore {
 
-    private val helper = Helper(context.applicationContext)
+    constructor(context: Context) : this(LibraryDatabase.of(context))
 
     override fun touchBook(book: Book, now: Long) {
         val values = ContentValues().apply {
@@ -55,7 +54,7 @@ class SqliteLibraryStore(context: Context) : LibraryStore {
             put("author", book.author)
             put("updated_at", now)
         }
-        helper.writableDatabase.insertWithOnConflict(
+        database.writableDatabase.insertWithOnConflict(
             "shelf",
             null,
             values,
@@ -64,7 +63,7 @@ class SqliteLibraryStore(context: Context) : LibraryStore {
     }
 
     override fun saveProgress(bookId: String, chapter: ChapterRef, chapterIndex: Int, now: Long) {
-        val db = helper.writableDatabase
+        val db = database.writableDatabase
         db.beginTransaction()
         try {
             db.insertWithOnConflict(
@@ -96,7 +95,7 @@ class SqliteLibraryStore(context: Context) : LibraryStore {
             LIMIT ?
         """.trimIndent()
         val books = ArrayList<ShelfBook>()
-        helper.readableDatabase.rawQuery(sql, arrayOf(limit.toString())).use { cursor ->
+        database.readableDatabase.rawQuery(sql, arrayOf(limit.toString())).use { cursor ->
             while (cursor.moveToNext()) {
                 val progress = if (cursor.isNull(4)) {
                     null
@@ -123,7 +122,7 @@ class SqliteLibraryStore(context: Context) : LibraryStore {
     }
 
     override fun progressOf(bookId: String): ReadingProgress? =
-        helper.readableDatabase.rawQuery(
+        database.readableDatabase.rawQuery(
             "SELECT item_id, chapter_title, chapter_index, updated_at FROM progress WHERE book_id = ?",
             arrayOf(bookId),
         ).use { cursor ->
@@ -137,7 +136,7 @@ class SqliteLibraryStore(context: Context) : LibraryStore {
         }
 
     override fun removeBook(bookId: String) {
-        val db = helper.writableDatabase
+        val db = database.writableDatabase
         db.beginTransaction()
         try {
             db.delete("progress", "book_id = ?", arrayOf(bookId))
@@ -145,42 +144,6 @@ class SqliteLibraryStore(context: Context) : LibraryStore {
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
-        }
-    }
-
-    private class Helper(context: Context) :
-        SQLiteOpenHelper(context, "library.db", null, VERSION) {
-
-        override fun onCreate(db: SQLiteDatabase) {
-            db.execSQL(
-                """
-                CREATE TABLE shelf (
-                    book_id TEXT PRIMARY KEY NOT NULL,
-                    title TEXT NOT NULL,
-                    author TEXT NOT NULL DEFAULT '',
-                    updated_at INTEGER NOT NULL
-                )
-                """.trimIndent(),
-            )
-            db.execSQL(
-                """
-                CREATE TABLE progress (
-                    book_id TEXT PRIMARY KEY NOT NULL,
-                    item_id TEXT NOT NULL,
-                    chapter_title TEXT NOT NULL DEFAULT '',
-                    chapter_index INTEGER NOT NULL DEFAULT 0,
-                    updated_at INTEGER NOT NULL
-                )
-                """.trimIndent(),
-            )
-        }
-
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-            // P2 是第一版。升级时按版本逐条 ALTER，不做 drop（书架是用户数据）。
-        }
-
-        companion object {
-            const val VERSION = 1
         }
     }
 }

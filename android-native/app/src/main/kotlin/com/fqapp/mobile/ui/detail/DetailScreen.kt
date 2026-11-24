@@ -26,9 +26,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.fqapp.mobile.data.Book
 import com.fqapp.mobile.data.CatalogRepository
+import com.fqapp.mobile.library.ChapterLoader
 import com.fqapp.mobile.library.SqliteLibraryStore
 import com.fqapp.mobile.ui.store.ErrorState
 import kotlinx.coroutines.launch
@@ -53,6 +56,8 @@ fun DetailScreen(bookId: String, onBack: () -> Unit, onOpenChapters: () -> Unit)
     val context = LocalContext.current
     val repository = remember { CatalogRepository(context) }
     val store = remember { SqliteLibraryStore(context) }
+    val loader = remember { ChapterLoader(context) }
+    var download by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val reloadKey = remember { mutableIntStateOf(0) }
@@ -86,6 +91,44 @@ fun DetailScreen(bookId: String, onBack: () -> Unit, onOpenChapters: () -> Unit)
                             modifier = Modifier.weight(1f),
                         ) {
                             Text("目录")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                if (download != null) return@OutlinedButton
+                                scope.launch {
+                                    download = 0 to 0
+                                    try {
+                                        val chapters = repository.directory(bookId)
+                                            .flatMap { volume -> volume.chapters }
+                                        if (chapters.isEmpty()) {
+                                            snackbar.showSnackbar("目录为空，无法下载")
+                                            return@launch
+                                        }
+                                        download = 0 to chapters.size
+                                        val (done, failed) =
+                                            loader.downloadAll(bookId, chapters) { ok, _ ->
+                                                download = ok to chapters.size
+                                            }
+                                        snackbar.showSnackbar(
+                                            if (failed == 0) {
+                                                "已下载 $done 章，可离线阅读"
+                                            } else {
+                                                "已下载 $done 章，$failed 章失败，可重试"
+                                            },
+                                        )
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (failure: Exception) {
+                                        snackbar.showSnackbar(failure.message ?: "下载失败")
+                                    } finally {
+                                        download = null
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            val current = download
+                            Text(if (current == null) "下载" else "${current.first}/${current.second}")
                         }
                         Button(
                             onClick = {

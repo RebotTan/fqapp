@@ -1,6 +1,7 @@
 package com.fqapp.mobile.data
 
 import android.content.Context
+import com.fqapp.mobile.core.ApiException
 import com.fqapp.mobile.core.CoreHttp
 import com.fqapp.mobile.core.CoreRuntime
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,12 @@ class CatalogRepository(private val context: Context) {
 
     suspend fun detail(bookId: String): Book = withContext(Dispatchers.IO) {
         Book.fromDetailPayload(http().getJson("/api/v1/books/$bookId"))
+    }
+
+    suspend fun chapterText(itemId: String): String = withContext(Dispatchers.IO) {
+        val text = ChapterText.extract(http().getJson("/api/v1/chapters/$itemId"))
+        if (text.isEmpty()) throw ApiException("正文为空")
+        text
     }
 
     suspend fun directory(bookId: String): List<ChapterVolume> = withContext(Dispatchers.IO) {
