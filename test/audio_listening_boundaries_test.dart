@@ -7,13 +7,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fqapp/models/chapter_media.dart';
 import 'package:fqapp/models/media_item.dart';
 import 'package:fqapp/pages/audio_page.dart';
+import 'package:fqapp/services/audio_preferences.dart';
 import 'package:fqapp/services/listening_session.dart';
+import 'package:fqapp/services/platform_channel.dart';
 
 import 'support/controlled_player.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    AudioPreferences.instance.resetForTest();
     TestWidgetsFlutterBinding.instance.handleAppLifecycleStateChanged(
       AppLifecycleState.resumed,
     );
@@ -110,6 +113,79 @@ void main() {
       await gesture.up();
     },
   );
+  testWidgets('stopping near the end does not synthesize completion', (
+    tester,
+  ) async {
+    final player = _NativeEndingPlayer();
+    await _mount(tester, player: player);
+    player.emitDuration(const Duration(seconds: 554));
+    player.emitPosition(const Duration(seconds: 553));
+    player.isPlaying = false;
+    player.playingEvents.add(false);
+    await _flush(tester);
+    await tester.pump(const Duration(seconds: 5));
+    await _flush(tester);
+    expect(player.disposed, isFalse);
+    expect(find.byKey(const Key('audio_advance_banner')), findsNothing);
+    expect(find.text('播放出错，请稍后重试'), findsNothing);
+    expect(ListeningSession.instance.chapterId, '1');
+    expect(ListeningSession.instance.playing, isFalse);
+    expect(ListeningSession.instance.completed, isFalse);
+  });
+
+  for (final action in ['noisy', 'replay']) {
+    testWidgets('$action cancels a pending chapter advance', (tester) async {
+      final player = _NativeEndingPlayer();
+      await _mount(tester, player: player);
+      player.endPlayback();
+      await _flush(tester);
+      expect(find.byKey(const Key('audio_advance_banner')), findsOneWidget);
+      switch (action) {
+        case 'noisy':
+          await PlatformChannels.notify(
+            'fqapp/native_player',
+            'onAudioBecomingNoisy',
+          );
+        case 'replay':
+          await tester.tap(find.byTooltip('播放'));
+      }
+      await _flush(tester);
+      expect(find.byKey(const Key('audio_advance_banner')), findsNothing);
+      await tester.pump(const Duration(seconds: 5));
+      await _flush(tester);
+      expect(player.disposed, isFalse);
+      expect(player.isPlaying, action == 'replay');
+      expect(ListeningSession.instance.bookId, 'boundary-book');
+      expect(ListeningSession.instance.chapterId, '1');
+      expect(ListeningSession.instance.playing, action == 'replay');
+    });
+  }
+
+  for (final choice in ['听完本章', '15 分钟后']) {
+    testWidgets('$choice prevents automatic next at the sleep boundary', (
+      tester,
+    ) async {
+      final player = _NativeEndingPlayer();
+      await _mount(tester, player: player);
+      await tester.tap(find.byKey(const Key('audio_sleep')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(choice));
+      await tester.pumpAndSettle();
+      if (choice == '15 分钟后') {
+        await tester.pump(const Duration(minutes: 14, seconds: 59));
+      }
+      player.endPlayback();
+      await _flush(tester);
+      await tester.pump(const Duration(seconds: 5));
+      await _flush(tester);
+      expect(player.disposed, isFalse);
+      expect(player.isPlaying, isFalse);
+      expect(find.byKey(const Key('audio_advance_banner')), findsNothing);
+      expect(ListeningSession.instance.bookId, 'boundary-book');
+      expect(ListeningSession.instance.chapterId, '1');
+      expect(ListeningSession.instance.playing, isFalse);
+    });
+  }
 }
 
 Future<void> _mount(
@@ -118,9 +194,14 @@ Future<void> _mount(
   int startIndex = 0,
   bool autoAdvance = true,
   Future<AudioSource>? nextSource,
+  List<String>? sourceRequests,
 }) async {
+  await tester.binding.setSurfaceSize(const Size(430, 932));
   var created = 0;
-  addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.binding.setSurfaceSize(null);
+  });
   await tester.pumpWidget(
     MaterialApp(
       home: AudioPage(
@@ -141,9 +222,12 @@ Future<void> _mount(
         ),
         playerFactory: () => created++ == 0 ? player : ControlledNativePlayer(),
         voicesLoader: () async => const [AudioVoice(id: '0', label: '默认音色')],
-        sourceLoader: (itemId, {toneId}) => itemId == '2' && nextSource != null
-            ? nextSource
-            : Future.value(_source(itemId)),
+        sourceLoader: (itemId, {toneId}) {
+          sourceRequests?.add(itemId);
+          return itemId == '2' && nextSource != null
+              ? nextSource
+              : Future.value(_source(itemId));
+        },
       ),
     ),
   );
