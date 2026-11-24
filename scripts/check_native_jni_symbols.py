@@ -17,12 +17,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Kotlin 包 com.fqapp.native.core.FqCoreBridge 的方法名 -> JNI 符号。
+# Kotlin 包 com.fqapp.mobile.core.FqCoreBridge 的方法名 -> JNI 符号。
 REQUIRED_SYMBOLS = [
-    "Java_com_fqapp_native_core_FqCoreBridge_nativeVersion",
-    "Java_com_fqapp_native_core_FqCoreBridge_nativeStart",
-    "Java_com_fqapp_native_core_FqCoreBridge_nativeStop",
-    "Java_com_fqapp_native_core_FqCoreBridge_nativeCancel",
+    "Java_com_fqapp_mobile_core_FqCoreBridge_nativeVersion",
+    "Java_com_fqapp_mobile_core_FqCoreBridge_nativeStart",
+    "Java_com_fqapp_mobile_core_FqCoreBridge_nativeStop",
+    "Java_com_fqapp_mobile_core_FqCoreBridge_nativeCancel",
 ]
 
 DEFAULT_SO = "rust/target/aarch64-linux-android/release/libfqapi_core.so"

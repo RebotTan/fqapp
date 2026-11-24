@@ -59,6 +59,14 @@ app.*.map.json
 # Rust 原生核心（rust/）与 C 加密库都可由源码重建，不提交生成的 .so。
 # shortplay 加密库由 native/ 中的 C 源码通过 CMake 构建。
 /assets/config/device_pool.json
+
+# 原生 Android 客户端（android-native/）：Gradle 产物与本机路径都不入库。
+/android-native/.gradle/
+/android-native/build/
+/android-native/app/build/
+/android-native/local.properties
+/android-native/app/src/main/jniLibs/*/*.so
+
 /android/app/src/main/jniLibs/*/*.so
 
 # 正式签名材料：真品放在仓库之外，见 docs/release-signing.md。

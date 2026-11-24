@@ -4,7 +4,7 @@
 //! 出错一律抛 Java 异常：JNI 边界上的 panic 会直接把进程 abort，用户看到的是
 //! 闪退而不是一条错误提示。
 //!
-//! 符号名对应 Kotlin 的 `com.fqapp.native.core.FqCoreBridge`；
+//! 符号名对应 Kotlin 的 `com.fqapp.mobile.core.FqCoreBridge`；
 //! `scripts/check_native_jni_symbols.py` 在构建阶段校验这四个名字。
 
 use jni::objects::{JClass, JString};
@@ -48,7 +48,7 @@ macro_rules! read_string_or_throw {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_fqapp_native_core_FqCoreBridge_nativeVersion<'local>(
+pub extern "system" fn Java_com_fqapp_mobile_core_FqCoreBridge_nativeVersion<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
@@ -62,7 +62,7 @@ pub extern "system" fn Java_com_fqapp_native_core_FqCoreBridge_nativeVersion<'lo
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_fqapp_native_core_FqCoreBridge_nativeStart<'local>(
+pub extern "system" fn Java_com_fqapp_mobile_core_FqCoreBridge_nativeStart<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     config_path: JString<'local>,
@@ -116,7 +116,7 @@ pub extern "system" fn Java_com_fqapp_native_core_FqCoreBridge_nativeStart<'loca
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_fqapp_native_core_FqCoreBridge_nativeStop<'local>(
+pub extern "system" fn Java_com_fqapp_mobile_core_FqCoreBridge_nativeStop<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) {
@@ -126,7 +126,7 @@ pub extern "system" fn Java_com_fqapp_native_core_FqCoreBridge_nativeStop<'local
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_fqapp_native_core_FqCoreBridge_nativeCancel<'local>(
+pub extern "system" fn Java_com_fqapp_mobile_core_FqCoreBridge_nativeCancel<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     request_id: JString<'local>,
