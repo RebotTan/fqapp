@@ -74,6 +74,35 @@ void main() {
   group('PlatformTxtSink', () {
     const channel = MethodChannel('fqapp/downloads');
 
+    test('saveStaged 走 copyText，把暂存路径交给原生侧', () async {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        return <String, Object?>{
+          'path': '/storage/emulated/0/Download/fqapp/书.txt',
+          'public': true,
+        };
+      });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+
+      final target = await const PlatformTxtSink().saveStaged(
+        fileName: '书.txt',
+        sourcePath: '/tmp/fqapp-export-1.txt',
+      );
+
+      expect(calls.single.method, 'copyText');
+      expect(calls.single.arguments, {
+        'fileName': '书.txt',
+        'sourcePath': '/tmp/fqapp-export-1.txt',
+      });
+      expect(target.path, '/storage/emulated/0/Download/fqapp/书.txt');
+      expect(target.isPublic, isTrue);
+    });
+
     test('speaks the fqapp/downloads channel and reports the public path', () async {
       final calls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -290,7 +319,7 @@ void main() {
       expect(sink.calls, isEmpty);
       expect(export.value.running, isFalse);
       expect(export.value.target, isNull);
-      expect(export.value.message, contains('写入 Downloads 失败'));
+      expect(export.value.message, contains('写入文件失败'));
     });
 
     test('a private target is labelled as such', () async {
@@ -313,7 +342,7 @@ void main() {
   });
 }
 
-class _RecordingSink implements TxtSink {
+class _RecordingSink extends TxtSink {
   final List<({String fileName, String text})> calls = [];
 
   /// 平台回报的落点；缺省按写进公共「下载」目录回报。

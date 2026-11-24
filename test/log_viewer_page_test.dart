@@ -443,7 +443,7 @@ void main() {
   });
 }
 
-class _RecordingSink implements TxtSink {
+class _RecordingSink extends TxtSink {
   String? text;
   String? fileName;
   bool fail = false;
