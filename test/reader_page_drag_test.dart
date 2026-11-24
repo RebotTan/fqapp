@@ -10,6 +10,31 @@ import 'package:fqapp/widgets/reader/reader_paged_view.dart';
 
 void main() {
   for (final style in [ReaderPageTurnStyle.slide, ReaderPageTurnStyle.cover]) {
+    testWidgets('$style rapid reversals reuse the active pair and settle', (
+      tester,
+    ) async {
+      await _pumpPager(tester, style);
+      final view = find.byType(PageView);
+      final controller = tester.widget<PageView>(view).controller!;
+      final pager = tester.state<ReaderPagedViewState>(
+        find.byType(ReaderPagedView),
+      );
+      final width = controller.position.viewportDimension;
+      for (var attempt = 0; attempt < 12; attempt++) {
+        final backward = attempt.isEven;
+        // Interrupt a snap while the old page still owns the midpoint.
+        controller.jumpTo(width * (backward ? 1.2 : 1.8));
+        final gesture = await tester.startGesture(tester.getCenter(view));
+        await gesture.moveBy(Offset(backward ? 270 : -270, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(controller.page, closeTo(backward ? 1 : 2, .001));
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(pager.isTurning, isFalse);
+      }
+      expect(tester.takeException(), isNull);
+    });
+
     for (final direction in [1, -1]) {
       for (final startX in [40.0, 140.0, 280.0, 360.0]) {
         testWidgets(
