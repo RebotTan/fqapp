@@ -118,6 +118,9 @@ class BookTxtExportState {
 /// Chapter bodies are fetched through [chapterLoader], which production wires to
 /// `ApiClient.contentText` — the single request funnel CRIT-005 requires.
 class BookTxtExport extends ValueNotifier<BookTxtExportState> {
+  /// 同时在手的章节数：只预取正文，兼顾源站压力与导出速度。
+  static const int _prefetchWindow = 4;
+
   BookTxtExport({
     required this.directoryLoader,
     required this.chapterLoader,
@@ -162,21 +165,42 @@ class BookTxtExport extends ValueNotifier<BookTxtExportState> {
     var completed = 0;
     var failed = 0;
     value = BookTxtExportState(running: true, total: chapters.length);
+
+    // 串行时每章都要等一次取文（缓存命中是 Hive 读，未命中是一次往返），
+    // 几百章就是几百个 RTT：这是导出慢的主因。窗口只预取正文，
+    // 拼装与进度仍严格按目录顺序，产物与串行实现逐字节相同。
+    var nextChapter = 0;
+    final pending = <Future<String?>>[];
+    Future<String?> loadBody(Chapter chapter) async {
+      if (!_alive(job)) return null;
+      try {
+        final text = await chapterLoader(chapter).timeout(timeout);
+        if (!_alive(job)) return null;
+        return exportChapterBody(text, chapterTitle: chapter.title);
+      } catch (_) {
+        // 已取消的预取可能再无人 await，错误就地吸收。
+        return null;
+      }
+    }
+
+    void fillWindow() {
+      while (_alive(job) &&
+          nextChapter < chapters.length &&
+          pending.length < _prefetchWindow) {
+        pending.add(loadBody(chapters[nextChapter++]));
+      }
+    }
+
+    fillWindow();
     for (final chapter in chapters) {
       if (!_alive(job)) return;
+      final body = await pending.removeAt(0);
+      if (!_alive(job)) return;
       buffer.write('# ${chapter.title}\n');
-      try {
-        final body = exportChapterBody(
-          await chapterLoader(chapter).timeout(timeout),
-          chapterTitle: chapter.title,
-        );
-        if (!_alive(job)) return;
-        if (body != null && body.isNotEmpty) {
-          buffer.write(body);
-          buffer.write('\n');
-        }
-      } catch (_) {
-        if (!_alive(job)) return;
+      if (body != null) {
+        buffer.write(body);
+        buffer.write('\n');
+      } else {
         // One dead chapter must not cost the user the other 999.
         failed++;
       }
@@ -188,8 +212,8 @@ class BookTxtExport extends ValueNotifier<BookTxtExportState> {
         total: chapters.length,
         failed: failed,
       );
+      fillWindow();
     }
-    if (!_alive(job)) return;
 
     final ExportTarget target;
     try {
