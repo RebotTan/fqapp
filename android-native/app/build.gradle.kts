@@ -22,6 +22,9 @@ android {
     }
 
     sourceSets {
+        getByName("test") {
+            java.srcDirs("src/test/kotlin")
+        }
         getByName("main") {
             java.srcDirs("src/main/kotlin")
             // 运行时资源与 Flutter 工程共用同一份，改 config/filters 不会分叉。
@@ -76,4 +79,6 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    // 单测跑在 JVM 上：android.jar 里的 org.json 只是桩，换成真实现才能验解析。
+    testImplementation("org.json:json:20240303")
 }

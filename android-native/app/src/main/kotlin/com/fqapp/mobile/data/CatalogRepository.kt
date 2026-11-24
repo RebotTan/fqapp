@@ -29,6 +29,10 @@ class CatalogRepository(private val context: Context) {
         Book.fromDetailPayload(http().getJson("/api/v1/books/$bookId"))
     }
 
+    suspend fun directory(bookId: String): List<ChapterVolume> = withContext(Dispatchers.IO) {
+        DirectoryParser.parse(http().getJson("/api/v1/books/$bookId/directory"))
+    }
+
     private suspend fun http(): CoreHttp =
         CoreHttp(CoreRuntime.ensureStarted(context.applicationContext))
 }

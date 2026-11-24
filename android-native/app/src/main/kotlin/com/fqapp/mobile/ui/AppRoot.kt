@@ -21,7 +21,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.fqapp.mobile.ui.chapters.ChapterListScreen
 import com.fqapp.mobile.ui.detail.DetailScreen
+import com.fqapp.mobile.ui.shelf.ShelfScreen
 import com.fqapp.mobile.ui.store.StoreScreen
 
 private data class TopLevelTab(
@@ -73,7 +75,7 @@ fun AppRoot() {
             modifier = Modifier.padding(padding),
         ) {
             composable("shelf") {
-                PlaceholderScreen("书架", "P2 会接上本地书架：最近阅读、分组、下载与阅读进度。")
+                ShelfScreen(onOpenBook = { bookId -> navController.navigate("book/$bookId") })
             }
             composable("store") {
                 StoreScreen(onOpenBook = { bookId -> navController.navigate("book/$bookId") })
@@ -85,7 +87,18 @@ fun AppRoot() {
                 route = "book/{bookId}",
                 arguments = listOf(navArgument("bookId") { type = NavType.StringType }),
             ) { entry ->
+                val bookId = entry.arguments?.getString("bookId").orEmpty()
                 DetailScreen(
+                    bookId = bookId,
+                    onBack = { navController.popBackStack() },
+                    onOpenChapters = { navController.navigate("book/$bookId/chapters") },
+                )
+            }
+            composable(
+                route = "book/{bookId}/chapters",
+                arguments = listOf(navArgument("bookId") { type = NavType.StringType }),
+            ) { entry ->
+                ChapterListScreen(
                     bookId = entry.arguments?.getString("bookId").orEmpty(),
                     onBack = { navController.popBackStack() },
                 )

@@ -17,6 +17,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -36,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.fqapp.mobile.data.Book
 import com.fqapp.mobile.data.CatalogRepository
+import com.fqapp.mobile.library.SqliteLibraryStore
 import com.fqapp.mobile.ui.store.ErrorState
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -47,16 +49,19 @@ private sealed interface DetailState {
 }
 
 @Composable
-fun DetailScreen(bookId: String, onBack: () -> Unit) {
+fun DetailScreen(bookId: String, onBack: () -> Unit, onOpenChapters: () -> Unit) {
     val context = LocalContext.current
     val repository = remember { CatalogRepository(context) }
+    val store = remember { SqliteLibraryStore(context) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val reloadKey = remember { mutableIntStateOf(0) }
     val state by produceState<DetailState>(DetailState.Loading, bookId, reloadKey.intValue) {
         value = DetailState.Loading
         value = try {
-            DetailState.Loaded(repository.detail(bookId))
+            val book = repository.detail(bookId)
+            store.touchBook(book)
+            DetailState.Loaded(book)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -70,17 +75,28 @@ fun DetailScreen(bookId: String, onBack: () -> Unit) {
             val book = (state as? DetailState.Loaded)?.book
             if (book != null) {
                 Surface(tonalElevation = 3.dp) {
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                snackbar.showSnackbar("阅读器在 P3 提供，这里先只做详情展示")
-                            }
-                        },
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text("开始阅读")
+                        OutlinedButton(
+                            onClick = onOpenChapters,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("目录")
+                        }
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    snackbar.showSnackbar("阅读器在 P3 提供，这里先只做详情展示")
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("开始阅读")
+                        }
                     }
                 }
             }
