@@ -46,8 +46,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('cached_book_export_book-1')));
-    await tester.pumpAndSettle();
+    await _tapExport(tester);
 
     expect(sink.calls.single.fileName, '测试书.txt');
     expect(sink.calls.single.text, '# 第一章\n正文1\n\n# 第二章\n正文2\n\n');
@@ -55,6 +54,44 @@ void main() {
     expect(find.textContaining('/sdcard/Download/测试书.txt'), findsOneWidget);
     // 行内其余操作没有被这次改动挤掉。
     expect(find.byTooltip('删除《测试书》缓存'), findsOneWidget);
+  });
+
+  testWidgets('导出优先吃本地缓存，已下载的书不用再联网', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final cache = _StubCacheStore();
+    await cache.saveBook(
+      CachedBook(id: 'book-1', title: '测试书', chapters: [first, second]),
+    );
+    for (final chapter in [first, second]) {
+      await cache.write(
+        bookId: 'book-1',
+        chapterId: chapter.itemId,
+        title: chapter.title,
+        text: '缓存正文${chapter.itemId}',
+      );
+    }
+    final sink = _RecordingSink();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CachedBooksPage(
+          cacheStore: cache,
+          readerStore: MemoryReaderStore(),
+          exportDirectoryLoader: (bookId) async => [first, second],
+          // 不注入取文 loader：缺省实现必须自己先查缓存，不许碰网络。
+          exportSink: sink,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapExport(tester);
+
+    final text = sink.calls.single.text;
+    expect(text, contains('# 第一章'));
+    expect(text, contains('缓存正文1'));
+    expect(text, contains('# 第二章'));
+    expect(text, contains('缓存正文2'));
+    expect(find.textContaining('已导出《测试书》2 章'), findsOneWidget);
   });
 
   testWidgets('导出中显示章节进度，再点一次即取消且不落盘', (tester) async {
@@ -79,9 +116,13 @@ void main() {
     await tester.pumpAndSettle();
 
     final exportButton = find.byKey(const Key('cached_book_export_book-1'));
-    await tester.tap(exportButton);
+    // 建暂存文件是真实 IO：让它在 runAsync 里走完，导出才会停到 gate 上。
+    await tester.runAsync(() async {
+      await tester.tap(exportButton);
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 20));
 
     expect(find.text('导出 0/2 章'), findsOneWidget);
     expect(find.byTooltip('取消导出'), findsOneWidget);
@@ -91,6 +132,10 @@ void main() {
 
     expect(find.textContaining('已取消导出'), findsOneWidget);
     gate.complete();
+    await tester.runAsync(() async {
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
     await tester.pumpAndSettle();
 
     expect(sink.calls, isEmpty);
@@ -115,15 +160,25 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('cached_book_export_book-1')));
-    await tester.pumpAndSettle();
+    await _tapExport(tester);
 
     expect(sink.calls, isEmpty);
     expect(find.textContaining('目录获取失败'), findsOneWidget);
   });
 }
 
-class _RecordingSink implements TxtSink {
+/// 导出要真的写一次临时文件，widget 测试的 fake async 推不动真实 IO，
+/// 所以真实 IO 那段丢进 runAsync 里跑完再让界面稳定下来。
+Future<void> _tapExport(WidgetTester tester) async {
+  await tester.runAsync(() async {
+    await tester.tap(find.byKey(const Key('cached_book_export_book-1')));
+    await tester.pump();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  });
+  await tester.pumpAndSettle();
+}
+
+class _RecordingSink extends TxtSink {
   final List<({String fileName, String text})> calls = [];
 
   @override

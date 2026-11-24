@@ -14,6 +14,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.IOException
+import java.io.OutputStream
 import java.util.concurrent.Executors
 
 /**
@@ -30,6 +31,8 @@ class DownloadsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var channel: MethodChannel
     private var context: Context? = null
     private val io = Executors.newSingleThreadExecutor()
+    /// 导出都收在「下载/fqapp」下，别和用户自己的文件混在一起。
+    private val subFolder = "fqapp"
     private val main = Handler(Looper.getMainLooper())
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -44,7 +47,7 @@ class DownloadsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        if (call.method != "saveText") {
+        if (call.method != "saveText" && call.method != "copyText") {
             result.notImplemented()
             return
         }
@@ -55,9 +58,19 @@ class DownloadsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
         val fileName = sanitize(call.argument<String>("fileName").orEmpty())
         val text = call.argument<String>("text").orEmpty()
+        val sourcePath = call.argument<String>("sourcePath").orEmpty()
         io.execute {
             val answer = try {
-                save(ctx, fileName, text)
+                if (call.method == "copyText") {
+                    val source = File(sourcePath)
+                    if (!source.isFile) throw IOException("暂存文件不存在")
+                    // 边读边写：整本正文不经过一次 bytes 分配。
+                    store(ctx, fileName) { out ->
+                        source.inputStream().use { it.copyTo(out) }
+                    }
+                } else {
+                    store(ctx, fileName) { out -> out.write(text.toByteArray(Charsets.UTF_8)) }
+                }
             } catch (error: Exception) {
                 null
             }
@@ -71,14 +84,20 @@ class DownloadsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
     }
 
-    private fun save(ctx: Context, fileName: String, text: String): Map<String, Any> {
-        val bytes = text.toByteArray(Charsets.UTF_8)
+    private fun store(
+        ctx: Context,
+        fileName: String,
+        write: (OutputStream) -> Unit,
+    ): Map<String, Any> {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = ctx.contentResolver
             val pending = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    "${Environment.DIRECTORY_DOWNLOADS}/$subFolder",
+                )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             val uri: Uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, pending)
@@ -87,7 +106,7 @@ class DownloadsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 val out = resolver.openOutputStream(uri, "w")
                     ?: throw IOException("无法打开导出目标")
                 out.use {
-                    it.write(bytes)
+                    write(it)
                     it.flush()
                 }
             } catch (error: Exception) {
@@ -107,15 +126,24 @@ class DownloadsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 Environment.DIRECTORY_DOWNLOADS,
             )
             return mapOf(
-                "path" to "${downloads.absolutePath}/$stored",
+                "path" to "${downloads.absolutePath}/$subFolder/$stored",
                 "public" to true,
             )
         }
 
-        val directory = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: ctx.filesDir
+        val directory = File(
+            ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: ctx.filesDir,
+            subFolder,
+        )
+        directory.mkdirs()
         val file = File(directory, fileName)
-        file.writeBytes(bytes)
+        try {
+            file.outputStream().use { write(it) }
+        } catch (error: Exception) {
+            // 和 MediaStore 分支一样：别留半本书。
+            file.delete()
+            throw error
+        }
         return mapOf("path" to file.absolutePath, "public" to false)
     }
 

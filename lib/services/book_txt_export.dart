@@ -1,11 +1,13 @@
-import 'platform_channel.dart';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/media_item.dart';
 import 'chapter_text_formatter.dart';
+import 'platform_channel.dart';
 
 /// Where a finished export landed, as the platform reported it.
 @immutable
@@ -35,10 +37,27 @@ class ExportWriteException implements Exception {
 /// Stores a finished TXT somewhere the user can reach. Abstracted so tests can
 /// capture the text without a platform channel.
 abstract class TxtSink {
+  const TxtSink();
+
   Future<ExportTarget> saveText({
     required String fileName,
     required String text,
   });
+
+  /// Stores text already staged in [sourcePath].
+  ///
+  /// The export writes chapters to a temp file as they arrive and hands the
+  /// path here, so a whole book never has to sit in one String. Sinks that
+  /// only speak text fall back to reading the staged file back.
+  Future<ExportTarget> saveStaged({
+    required String fileName,
+    required String sourcePath,
+  }) async {
+    return saveText(
+      fileName: fileName,
+      text: await File(sourcePath).readAsString(),
+    );
+  }
 }
 
 /// The system Downloads collection through the `fqapp/downloads` channel.
@@ -48,7 +67,7 @@ abstract class TxtSink {
 /// directory and report `public: false` so the caller does not claim the file
 /// is in Downloads. See
 /// `.agents/notes/implemented/feature/2026-10-05-book-txt-export.md`.
-class PlatformTxtSink implements TxtSink {
+class PlatformTxtSink extends TxtSink {
   const PlatformTxtSink();
 
   static const _channel = AppMethodChannel('fqapp/downloads');
@@ -68,6 +87,29 @@ class PlatformTxtSink implements TxtSink {
       throw ExportWriteException(error.message ?? '写入失败');
     } on MissingPluginException {
       // Desktop and test hosts have no Android plugin: never report success.
+      throw const ExportWriteException('当前平台不支持导出到 Downloads');
+    }
+    final path = result?['path'];
+    if (path is! String || path.isEmpty) {
+      throw const ExportWriteException('系统未返回导出路径');
+    }
+    return ExportTarget(path: path, isPublic: result?['public'] == true);
+  }
+
+  @override
+  Future<ExportTarget> saveStaged({
+    required String fileName,
+    required String sourcePath,
+  }) async {
+    final Map<String, Object?>? result;
+    try {
+      result = await _channel.invokeMapMethod<String, Object?>('copyText', {
+        'fileName': fileName,
+        'sourcePath': sourcePath,
+      });
+    } on PlatformException catch (error) {
+      throw ExportWriteException(error.message ?? '写入失败');
+    } on MissingPluginException {
       throw const ExportWriteException('当前平台不支持导出到 Downloads');
     }
     final path = result?['path'];
@@ -118,11 +160,19 @@ class BookTxtExportState {
 /// Chapter bodies are fetched through [chapterLoader], which production wires to
 /// `ApiClient.contentText` — the single request funnel CRIT-005 requires.
 class BookTxtExport extends ValueNotifier<BookTxtExportState> {
+  /// 同时在手的章节数：只预取正文，兼顾源站压力与导出速度。
+  static const int _prefetchWindow = 4;
+
+  /// 攒够这么多章再落一次盘：每章一次 write syscall 太碎，
+  /// 攒 16 章一批既省调用，又让堆里最多只有十几章的正文。
+  static const int _flushEvery = 16;
+
   BookTxtExport({
     required this.directoryLoader,
     required this.chapterLoader,
     required this.sink,
     this.timeout = const Duration(seconds: 30),
+    this.stagingDirectory = getTemporaryDirectory,
   }) : super(const BookTxtExportState());
 
   /// Fresh directory per export: chapters added since the book was cached must
@@ -133,8 +183,22 @@ class BookTxtExport extends ValueNotifier<BookTxtExportState> {
   final TxtSink sink;
   final Duration timeout;
 
+  /// 暂存目录：整本正文逐章落到这里，再由平台搬进 Downloads，
+  /// 内存里始终只有一章。
+  final Future<Directory> Function() stagingDirectory;
+
   int _job = 0;
   bool _disposed = false;
+
+  /// 宿主没有 path_provider（测试、嵌入场景）时退回系统临时目录：
+  /// 同样是「系统可随时清理」的位置，语义一致，不必让导出直接失败。
+  Future<Directory> _stagingDirectory() async {
+    try {
+      return await stagingDirectory();
+    } catch (_) {
+      return Directory.systemTemp;
+    }
+  }
 
   /// Runs one export. Ignored while another is in flight, so a double tap
   /// cannot start two of them.
@@ -158,50 +222,110 @@ class BookTxtExport extends ValueNotifier<BookTxtExportState> {
       return;
     }
 
-    final buffer = StringBuffer();
+    final File staged;
+    try {
+      final staging = await _stagingDirectory();
+      staged = File('${staging.path}/fqapp-export-$job.txt');
+      await staged.writeAsString('');
+    } catch (_) {
+      if (_alive(job)) {
+        value = const BookTxtExportState(message: '导出失败：无法创建临时文件，请重试');
+      }
+      return;
+    }
+
+    if (!_alive(job)) {
+      // 建暂存文件期间被取消：别把取消态覆盖回运行态。
+      try {
+        await staged.delete();
+      } catch (_) {
+        // 临时文件而已。
+      }
+      return;
+    }
+
     var completed = 0;
     var failed = 0;
     value = BookTxtExportState(running: true, total: chapters.length);
-    for (final chapter in chapters) {
-      if (!_alive(job)) return;
-      buffer.write('# ${chapter.title}\n');
+
+    // 串行时每章都要等一次取文（缓存命中是 Hive 读，未命中是一次往返），
+    // 几百章就是几百个 RTT：这是导出慢的主因。窗口只预取正文，
+    // 拼装与进度仍严格按目录顺序，产物与串行实现逐字节相同。
+    var nextChapter = 0;
+    final pending = <Future<String?>>[];
+    Future<String?> loadBody(Chapter chapter) async {
+      if (!_alive(job)) return null;
       try {
-        final body = exportChapterBody(
-          await chapterLoader(chapter).timeout(timeout),
-          chapterTitle: chapter.title,
-        );
-        if (!_alive(job)) return;
-        if (body != null && body.isNotEmpty) {
-          buffer.write(body);
-          buffer.write('\n');
-        }
+        final text = await chapterLoader(chapter).timeout(timeout);
+        if (!_alive(job)) return null;
+        return exportChapterBody(text, chapterTitle: chapter.title);
       } catch (_) {
-        if (!_alive(job)) return;
-        // One dead chapter must not cost the user the other 999.
-        failed++;
+        // 已取消的预取可能再无人 await，错误就地吸收。
+        return null;
       }
-      buffer.write('\n');
-      completed++;
-      value = BookTxtExportState(
-        running: true,
-        completed: completed,
-        total: chapters.length,
-        failed: failed,
-      );
     }
-    if (!_alive(job)) return;
+
+    void fillWindow() {
+      while (_alive(job) &&
+          nextChapter < chapters.length &&
+          pending.length < _prefetchWindow) {
+        pending.add(loadBody(chapters[nextChapter++]));
+      }
+    }
+
+    final buffered = StringBuffer();
+    Future<void> flushStaged() async {
+      if (buffered.isEmpty) return;
+      final chunk = buffered.toString();
+      buffered.clear();
+      await staged.writeAsString(chunk, mode: FileMode.append);
+    }
 
     final ExportTarget target;
     try {
-      target = await sink.saveText(
+      fillWindow();
+      for (final chapter in chapters) {
+        if (!_alive(job)) return;
+        final body = await pending.removeAt(0);
+        if (!_alive(job)) return;
+        final chunk = StringBuffer('# ${chapter.title}\n');
+        if (body != null) {
+          chunk.write(body);
+          chunk.write('\n');
+        } else {
+          // One dead chapter must not cost the user the other 999.
+          failed++;
+        }
+        chunk.write('\n');
+        buffered.write(chunk);
+        completed++;
+        value = BookTxtExportState(
+          running: true,
+          completed: completed,
+          total: chapters.length,
+          failed: failed,
+        );
+        fillWindow();
+        if (completed % _flushEvery == 0) await flushStaged();
+      }
+      await flushStaged();
+
+      target = await sink.saveStaged(
         fileName: exportFileName(title),
-        text: buffer.toString(),
+        sourcePath: staged.path,
       );
     } catch (_) {
       if (_alive(job)) {
-        value = const BookTxtExportState(message: '导出失败：写入 Downloads 失败，请重试');
+        value = const BookTxtExportState(message: '导出失败：写入文件失败，请重试');
       }
       return;
+    } finally {
+      // 成功、失败、取消都走这里：暂存文件绝不留到下一次导出。
+      try {
+        await staged.delete();
+      } catch (_) {
+        // 删不掉也只是个临时文件。
+      }
     }
     if (!_alive(job)) return;
     value = BookTxtExportState(
