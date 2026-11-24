@@ -1,4 +1,29 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+// 与 Flutter 工程共用同一套签名材料：本地读 ../android/keystore.properties，
+// CI 用四个 RELEASE_* 环境变量。缺任一项就只出未签名的 release。
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("../android/keystore.properties")
+    if (file.isFile) file.inputStream().use { load(it) }
+}
+
+fun signingValue(key: String, vararg environmentNames: String): String? =
+    keystoreProperties.getProperty(key)?.takeIf { it.isNotBlank() }
+        ?: environmentNames.firstNotNullOfOrNull { name ->
+            System.getenv(name)?.takeIf { it.isNotBlank() }
+        }
+
+val releaseStoreFile = signingValue("storeFile", "RELEASE_KEYSTORE_FILE")
+val releaseStorePassword = signingValue("storePassword", "RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = signingValue("keyAlias", "RELEASE_KEY_ALIAS")
+val releaseKeyPassword = signingValue("keyPassword", "RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { it != null }
 
 plugins {
     id("com.android.application")
@@ -36,6 +61,22 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                // storeFile 可能是绝对路径，也可能是相对 Flutter 工程 android/ 的路径。
+                storeFile = rootProject.file(releaseStoreFile!!).takeIf { it.isFile }
+                    ?: rootProject.file("../android/${releaseStoreFile}")
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+            }
+        }
+    }
+
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -46,7 +87,15 @@ android {
             applicationIdSuffix = ".debug"
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
