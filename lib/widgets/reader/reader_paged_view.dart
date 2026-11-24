@@ -292,6 +292,16 @@ class ReaderPagedViewState extends State<ReaderPagedView>
     return width > 0 ? width : 1;
   }
 
+  /// True while a tap/drag/curl/boundary turn is still committing. The host
+  /// must not replace the layout under an in-flight PageView animation.
+  bool get isTurning =>
+      _turning ||
+      _boundaryPending ||
+      _pageDrag != null ||
+      (_attachedPosition?.isScrollingNotifier.value ?? false) ||
+      _chapterTurnAnimation.isAnimating ||
+      _curlAnimation.isAnimating;
+
   bool get _hasEndPage => !widget.hasNextChapter && widget.endPage != null;
   int get _itemCount => widget.layout.pages.length + (_hasEndPage ? 1 : 0);
 
@@ -303,8 +313,6 @@ class ReaderPagedViewState extends State<ReaderPagedView>
   /// The page the viewport is parked on, or null before the first layout.
   /// Exposed so the host can verify a follow jump landed where it asked.
   int? get currentPage => _attachedPage?.round();
-  /// True while a turn (programmatic page animation) is in flight.
-  bool get isTurning => _turning;
 
   PageController _newController() =>
       PageController(initialPage: widget.pageIndex, keepPage: false);
