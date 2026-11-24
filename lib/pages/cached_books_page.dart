@@ -5,6 +5,7 @@ import '../models/media_item.dart';
 import '../services/api_client.dart';
 import '../services/book_txt_export.dart';
 import '../services/chapter_cache_store.dart';
+import '../services/chapter_text_formatter.dart';
 import '../services/library_store.dart';
 import '../widgets/cache/cache_page_widgets.dart';
 import '../widgets/home/home_design.dart';
@@ -137,10 +138,9 @@ class _CachedBooksPageState extends State<CachedBooksPage> {
     if (_export != null) return;
     final export = BookTxtExport(
       directoryLoader: widget.exportDirectoryLoader ?? _loadExportDirectory,
-      // 取文只经 ApiClient：CRIT-005 要求业务请求都过它的 _get 漏斗。
       chapterLoader:
           widget.exportChapterLoader ??
-          (chapter) => ApiClient.instance.contentText(chapter.itemId),
+          (chapter) => _loadExportChapterBody(book, chapter),
       sink: widget.exportSink ?? const PlatformTxtSink(),
     );
     export.addListener(_onExportChanged);
@@ -148,6 +148,30 @@ class _CachedBooksPageState extends State<CachedBooksPage> {
     _exportBookId = book.id;
     setState(() {});
     export.start(bookId: book.id, title: book.title);
+  }
+
+  /// 导出取文：先吃本地已下载的正文，缺的章才联网。
+  ///
+  /// 下载（ChapterDownload）与导出（BookTxtExport）是两条独立流程，缓存是它们
+  /// 唯一的交点；没有这一步，已经下好的书断网时也导不出来，而且要再抓一遍。
+  Future<String> _loadExportChapterBody(CachedBook book, Chapter chapter) async {
+    try {
+      final cached = await _store.read(
+        bookId: book.id,
+        chapterId: chapter.itemId,
+      );
+      if (cached != null) {
+        final text = ChapterContent.fromCacheText(
+          cached,
+        ).withoutLeadingTitle(chapter.title).legacyText;
+        // 空缓存（或损坏）不算命中，交给网络重取。
+        if (splitChapterParagraphs(text).isNotEmpty) return cached;
+      }
+    } catch (_) {
+      // 读缓存失败不能卡死导出，退回网络。
+    }
+    // 仍然只经 ApiClient：CRIT-005 要求业务请求都过它的 _get 漏斗。
+    return ApiClient.instance.contentText(chapter.itemId);
   }
 
   void _cancelExport() => _export?.cancel();
